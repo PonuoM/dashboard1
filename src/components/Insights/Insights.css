@@ -1,0 +1,83 @@
+.insights-section {
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px);
+    border: var(--glass-border);
+    border-radius: 16px;
+    padding: 24px;
+    margin-top: 30px;
+    box-shadow: var(--glass-shadow);
+}
+
+.insights-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--primary-color);
+    margin: 0 0 20px 0;
+}
+
+.insight-item {
+    padding: 16px 20px;
+    border-radius: 12px;
+    margin-bottom: 12px;
+    display: flex;
+    gap: 16px;
+    align-items: center;
+}
+
+.insight-item:last-child {
+    margin-bottom: 0;
+}
+
+.insight-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 6px 10px;
+    border-radius: 6px;
+    white-space: nowrap;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.insight-item p {
+    margin: 0;
+    font-size: 0.95rem;
+    line-height: 1.6;
+    color: var(--text-main);
+}
+
+/* Minimalist Alerts */
+
+/* TIP */
+.insight-item.tip {
+    background: rgba(16, 185, 129, 0.08);
+    border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.insight-item.tip .insight-label {
+    background: #10b981;
+    color: white;
+}
+
+/* NOTE */
+.insight-item.note {
+    background: rgba(59, 130, 246, 0.08);
+    /* Blue tint */
+    border: 1px solid rgba(59, 130, 246, 0.2);
+}
+
+.insight-item.note .insight-label {
+    background: #3b82f6;
+    color: white;
+}
+
+/* IMPORTANT */
+.insight-item.important {
+    background: rgba(245, 158, 11, 0.08);
+    /* Amber tint */
+    border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+.insight-item.important .insight-label {
+    background: #f59e0b;
+    color: white;
+}

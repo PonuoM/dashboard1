@@ -1,89 +1,121 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { HashRouter, Routes, Route } from 'react-router-dom'
 import './App.css'
 import Login from './Login'
-
-function Home({ user, onLogout }) {
-  const [data, setData] = useState([])
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    fetch('./api/get_data.php')
-      .then((res) => res.json())
-      .then((data) => {
-        setData(data)
-        setLoading(false)
-      })
-      .catch((error) => {
-        console.error('Error fetching data:', error)
-        setLoading(false)
-      })
-  }, [])
-
-  return (
-    <div className="container">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h1>Dashboard Users</h1>
-        {user && (
-          <div>
-            <span>Welcome, {user.username} </span>
-            <button onClick={onLogout} style={{ marginLeft: '10px' }}>Logout</button>
-          </div>
-        )}
-      </div>
-
-      {loading ? (
-        <p>Loading...</p>
-      ) : (
-        <div className="user-list">
-          {data.length > 0 ? (
-            <ul>
-              {data.map((user, index) => (
-                <li key={index}>
-                  <strong>ID:</strong> {user.id || index} |
-                  <strong> Name:</strong> {user.name || 'N/A'}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p>No users found or connection failed.</p>
-          )}
-        </div>
-      )}
-      <p style={{ marginTop: '20px', fontSize: '0.8em', color: '#666' }}>
-        Data fetched from <code>./api/get_data.php</code>
-      </p>
-    </div>
-  )
-}
+import { Layout } from './components/Layout'
+import { SalesReportPage } from './pages/SalesReport'
+import { DashboardPage } from './pages/Dashboard'
+import { ProductAnalysisPage } from './pages/ProductAnalysis'
+import { RegionalSalesPage } from './pages/RegionalSales'
+import { TalkTimePage } from './pages/TalkTime'
+import { AdminSalesReportPage } from './pages/AdminSalesReport'
+import { PageAnalysisPage } from './pages/PageAnalysis'
+import { AdsSummaryPage } from './pages/AdsSummary'
+import { IndividualSalesPage } from './pages/IndividualSales'
+import { AccountingPage } from './pages/Accounting'
 
 function App() {
-  // Simple check for localStorage, ideally verify token
+  // User state from localStorage
   const [user, setUser] = useState(() => {
     const saved = localStorage.getItem('user')
     return saved ? JSON.parse(saved) : null
   })
 
+  // Current page state - read from localStorage or default to dashboard
+  const [currentPage, setCurrentPage] = useState(() => {
+    const savedPage = localStorage.getItem('currentPage')
+    return savedPage || 'dashboard'
+  })
+
   const handleLogin = (userData) => {
     setUser(userData)
     localStorage.setItem('user', JSON.stringify(userData))
+    // Set default page based on role
+    const defaultPage = userData?.role === 'Supervisor Telesale' ? 'sales' : 'dashboard'
+    setCurrentPage(defaultPage)
+    localStorage.setItem('currentPage', defaultPage)
   }
 
   const handleLogout = () => {
     setUser(null)
     localStorage.removeItem('user')
+    localStorage.removeItem('currentPage')
+  }
+
+  const handlePageChange = (pageId) => {
+    setCurrentPage(pageId)
+    localStorage.setItem('currentPage', pageId)
+  }
+
+  // If not logged in, show login page
+  if (!user) {
+    return <Login onLogin={handleLogin} />
+  }
+
+  // Render current page content
+  const renderPage = () => {
+    switch (currentPage) {
+      case 'dashboard':
+        // Redirect Supervisor Telesale to sales page
+        if (user?.role === 'Supervisor Telesale') {
+          return <SalesReportPage user={user} />
+        }
+        return <DashboardPage user={user} />
+      case 'sales':
+        return <SalesReportPage user={user} />
+      case 'product-analysis':
+        return <ProductAnalysisPage user={user} />
+      case 'regional-sales':
+        return <RegionalSalesPage user={user} />
+      case 'talk-time':
+        return <TalkTimePage user={user} />
+      case 'admin-sales':
+        // Redirect Supervisor Telesale to sales page
+        if (user?.role === 'Supervisor Telesale') {
+          return <SalesReportPage user={user} />
+        }
+        return <AdminSalesReportPage user={user} />
+      case 'page-analysis':
+        // Redirect Supervisor Telesale to sales page
+        if (user?.role === 'Supervisor Telesale') {
+          return <SalesReportPage user={user} />
+        }
+        return <PageAnalysisPage user={user} />
+      case 'ads-summary':
+        if (user?.role === 'Supervisor Telesale') {
+          return <SalesReportPage user={user} />
+        }
+        return <AdsSummaryPage user={user} />
+      case 'individual-sales':
+        if (user?.role === 'Supervisor Telesale') {
+          return <SalesReportPage user={user} />
+        }
+        return <IndividualSalesPage user={user} />
+      case 'accounting':
+        return <AccountingPage user={user} />
+      default:
+        if (user?.role === 'Supervisor Telesale') {
+          return <SalesReportPage user={user} />
+        }
+        return <DashboardPage user={user} />
+    }
   }
 
   return (
     <HashRouter>
       <Routes>
         <Route
-          path="/"
-          element={user ? <Home user={user} onLogout={handleLogout} /> : <Login onLogin={handleLogin} />}
-        />
-        <Route
-          path="/login"
-          element={user ? <Home user={user} onLogout={handleLogout} /> : <Login onLogin={handleLogin} />}
+          path="*"
+          element={
+            <Layout
+              user={user}
+              onLogout={handleLogout}
+              currentPage={currentPage}
+              onPageChange={handlePageChange}
+            >
+              {renderPage()}
+            </Layout>
+          }
         />
       </Routes>
     </HashRouter>

@@ -1,0 +1,13 @@
+<?php
+// =====================================================
+// PRODUCTION Configuration (Server)
+// =====================================================
+// ใช้สำหรับ deploy ขึ้น server จริง
+
+$host = "localhost";
+$db_user = "primacom_bloguser";
+$db_pass = "pJnL53Wkhju2LaGPytw8"; 
+$db_name = "primacom_mini_erp";
+
+// Connection options if needed
+?>

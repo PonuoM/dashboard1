@@ -22,15 +22,25 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $user = $result->fetch_assoc();
             // Verify password (plaintext as requested)
             if ($password === $user['password']) {
-                $response['success'] = true;
-                $response['message'] = 'Login successful';
-                // You might return user info or token here
-                 $response['user'] = [
-                    'id' => $user['id'],
-                    'username' => $user['username']
-                ];
+                // Only allow specific roles to access Dashboard
+                $allowed_roles = ['Admin Control', 'Supervisor Telesale'];
+                if (!in_array($user['role'], $allowed_roles)) {
+                    $response['message'] = 'ไม่มีสิทธิ์เข้าใช้งาน Dashboard';
+                } else {
+                    $response['success'] = true;
+                    $response['message'] = 'Login successful';
+                    // Return user info including company_id for data filtering
+                    $response['user'] = [
+                        'id' => $user['id'],
+                        'username' => $user['username'],
+                        'first_name' => $user['first_name'],
+                        'last_name' => $user['last_name'],
+                        'role' => $user['role'],
+                        'company_id' => $user['company_id']
+                    ];
+                }
             } else {
-                $response['message'] = 'Invalid password';
+                $response['message'] = 'รหัสผ่านไม่ถูกต้อง';
             }
         } else {
             $response['message'] = 'User not found';

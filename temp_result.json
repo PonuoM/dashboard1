@@ -1,0 +1,256 @@
+{
+    "pages_schema": [
+        {
+            "Field": "id",
+            "Type": "int(11)",
+            "Null": "NO",
+            "Key": "PRI",
+            "Default": null,
+            "Extra": "auto_increment"
+        },
+        {
+            "Field": "page_id",
+            "Type": "varchar(255)",
+            "Null": "YES",
+            "Key": "MUL",
+            "Default": null,
+            "Extra": ""
+        },
+        {
+            "Field": "name",
+            "Type": "varchar(255)",
+            "Null": "NO",
+            "Key": "",
+            "Default": null,
+            "Extra": ""
+        },
+        {
+            "Field": "platform",
+            "Type": "varchar(64)",
+            "Null": "NO",
+            "Key": "",
+            "Default": "Facebook",
+            "Extra": ""
+        },
+        {
+            "Field": "page_type",
+            "Type": "varchar(50)",
+            "Null": "YES",
+            "Key": "MUL",
+            "Default": null,
+            "Extra": ""
+        },
+        {
+            "Field": "url",
+            "Type": "varchar(1024)",
+            "Null": "YES",
+            "Key": "",
+            "Default": null,
+            "Extra": ""
+        },
+        {
+            "Field": "company_id",
+            "Type": "int(11)",
+            "Null": "NO",
+            "Key": "MUL",
+            "Default": null,
+            "Extra": ""
+        },
+        {
+            "Field": "active",
+            "Type": "tinyint(1)",
+            "Null": "NO",
+            "Key": "MUL",
+            "Default": "1",
+            "Extra": ""
+        },
+        {
+            "Field": "still_in_list",
+            "Type": "tinyint(1)",
+            "Null": "NO",
+            "Key": "MUL",
+            "Default": "1",
+            "Extra": ""
+        },
+        {
+            "Field": "user_count",
+            "Type": "int(11)",
+            "Null": "NO",
+            "Key": "MUL",
+            "Default": "0",
+            "Extra": ""
+        },
+        {
+            "Field": "created_at",
+            "Type": "timestamp",
+            "Null": "YES",
+            "Key": "",
+            "Default": "CURRENT_TIMESTAMP",
+            "Extra": "DEFAULT_GENERATED"
+        },
+        {
+            "Field": "updated_at",
+            "Type": "timestamp",
+            "Null": "YES",
+            "Key": "",
+            "Default": "CURRENT_TIMESTAMP",
+            "Extra": "DEFAULT_GENERATED on update CURRENT_TIMESTAMP"
+        }
+    ],
+    "marketing_ads_log_schema": [
+        {
+            "Field": "id",
+            "Type": "int(11)",
+            "Null": "NO",
+            "Key": "PRI",
+            "Default": null,
+            "Extra": "auto_increment"
+        },
+        {
+            "Field": "page_id",
+            "Type": "int(11)",
+            "Null": "NO",
+            "Key": "MUL",
+            "Default": null,
+            "Extra": ""
+        },
+        {
+            "Field": "user_id",
+            "Type": "int(11)",
+            "Null": "NO",
+            "Key": "MUL",
+            "Default": null,
+            "Extra": ""
+        },
+        {
+            "Field": "date",
+            "Type": "date",
+            "Null": "NO",
+            "Key": "MUL",
+            "Default": null,
+            "Extra": ""
+        },
+        {
+            "Field": "ads_cost",
+            "Type": "int(11)",
+            "Null": "YES",
+            "Key": "",
+            "Default": null,
+            "Extra": ""
+        },
+        {
+            "Field": "impressions",
+            "Type": "int(11)",
+            "Null": "YES",
+            "Key": "",
+            "Default": null,
+            "Extra": ""
+        },
+        {
+            "Field": "reach",
+            "Type": "int(11)",
+            "Null": "YES",
+            "Key": "",
+            "Default": null,
+            "Extra": ""
+        },
+        {
+            "Field": "clicks",
+            "Type": "int(11)",
+            "Null": "YES",
+            "Key": "",
+            "Default": null,
+            "Extra": ""
+        },
+        {
+            "Field": "created_at",
+            "Type": "timestamp",
+            "Null": "YES",
+            "Key": "MUL",
+            "Default": "CURRENT_TIMESTAMP",
+            "Extra": "DEFAULT_GENERATED"
+        },
+        {
+            "Field": "updated_at",
+            "Type": "timestamp",
+            "Null": "YES",
+            "Key": "",
+            "Default": "CURRENT_TIMESTAMP",
+            "Extra": "DEFAULT_GENERATED on update CURRENT_TIMESTAMP"
+        }
+    ],
+    "pages_sample": [
+        {
+            "id": "1",
+            "page_id": null,
+            "name": "01 เพจแรก",
+            "platform": "Facebook",
+            "page_type": null,
+            "url": "https:\/\/github.com\/PonuoM\/CRM_ERP_V4",
+            "company_id": "1",
+            "active": "1",
+            "still_in_list": "0",
+            "user_count": "0",
+            "created_at": "2025-10-16 12:26:09",
+            "updated_at": "2025-10-16 12:26:57"
+        },
+        {
+            "id": "2",
+            "page_id": "tt_7379649810855412753",
+            "name": "ปุ๋ยเทพมงคล",
+            "platform": "tiktok",
+            "page_type": null,
+            "url": null,
+            "company_id": "1",
+            "active": "1",
+            "still_in_list": "1",
+            "user_count": "3",
+            "created_at": "2025-10-16 12:26:57",
+            "updated_at": "2025-10-24 10:12:13"
+        },
+        {
+            "id": "3",
+            "page_id": "ln_2007561758",
+            "name": "ปุ๋ยตราเทพมงคล",
+            "platform": "line",
+            "page_type": null,
+            "url": null,
+            "company_id": "1",
+            "active": "1",
+            "still_in_list": "1",
+            "user_count": "13",
+            "created_at": "2025-10-16 12:26:57",
+            "updated_at": "2025-10-24 10:12:13"
+        },
+        {
+            "id": "4",
+            "page_id": "ln_2007344099",
+            "name": "พรีม่าแพสชั่น49จำกัด",
+            "platform": "line",
+            "page_type": null,
+            "url": null,
+            "company_id": "1",
+            "active": "1",
+            "still_in_list": "1",
+            "user_count": "12",
+            "created_at": "2025-10-16 12:26:57",
+            "updated_at": "2025-10-24 10:12:13"
+        },
+        {
+            "id": "5",
+            "page_id": "479486421923397",
+            "name": "ปุ๋ยแคลเซียมโบรอน ตราเทพมงคล  เร่งดอก ขั้วเหนียว ป้องกันผลแตก",
+            "platform": "facebook",
+            "page_type": null,
+            "url": null,
+            "company_id": "1",
+            "active": "1",
+            "still_in_list": "1",
+            "user_count": "21",
+            "created_at": "2025-10-16 12:26:57",
+            "updated_at": "2025-10-24 10:12:13"
+        }
+    ],
+    "ads_sample": [],
+    "orders_by_page_hour": []
+}

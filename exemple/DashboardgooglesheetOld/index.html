@@ -1,0 +1,2000 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <base target="_top">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sales Team Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        :root {
+            --bg-color: #f8f9fa;
+            --sidebar-color: #ffffff;
+            --card-color: #ffffff;
+            --text-color: #343a40;
+            --text-secondary: #6c757d;
+            --accent-color: #5e72e4;
+            --border-color: #dee2e6;
+            --font-family: 'Noto Sans Thai', sans-serif;
+            --table-header-color: #f2f2f2;
+            --green-text: #2dce89;
+            --red-text: #f5365c;
+            --gold-color: #ffd700;
+            --highlight-bg: #e9ecef;
+            --today-highlight-bg: #fffde7;
+        }
+
+        body.dark-theme {
+            --bg-color: #172b4d;
+            --sidebar-color: #1a1f39;
+            --card-color: #212541;
+            --text-color: #e9ecef;
+            --text-secondary: #8898aa;
+            --accent-color: #8965e0;
+            --border-color: #2d375a;
+            --table-header-color: #2d375a;
+            --highlight-bg: #2d375a;
+            --today-highlight-bg: #4a472a;
+        }
+
+        body {
+            font-family: var(--font-family);
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #login-page {
+            width: 100%;
+            max-width: 400px;
+            padding: 2rem;
+        }
+
+        .login-card {
+            background-color: var(--card-color);
+            padding: 2.5rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+        }
+
+        .login-header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .login-header i {
+            font-size: 3rem;
+            color: var(--accent-color);
+            margin-bottom: 1rem;
+        }
+
+        .login-header h1 {
+            margin: 0;
+            font-size: 1.8rem;
+        }
+
+        .input-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .input-group label {
+            display: block;
+            margin-bottom: .5rem;
+            font-weight: 500;
+        }
+
+        .input-group input {
+            width: 100%;
+            padding: .8rem;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            font-family: var(--font-family);
+            box-sizing: border-box;
+        }
+
+        .btn-login {
+            width: 100%;
+            padding: .9rem;
+            border: none;
+            border-radius: 8px;
+            background-color: var(--accent-color);
+            color: white;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        .btn-login:hover {
+            background-color: #4a5cc0;
+        }
+
+        body.dark-theme .btn-login:hover {
+            background-color: #7952d7;
+        }
+
+        #login-error {
+            color: var(--red-text);
+            text-align: center;
+            margin-top: 1rem;
+            font-size: 0.9em;
+            min-height: 1.2em;
+        }
+
+        #dashboard-wrapper {
+            display: flex;
+            width: 100%;
+            height: 100%;
+        }
+
+        #sidebar {
+            width: 250px;
+            background-color: var(--sidebar-color);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid var(--border-color);
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.05);
+            flex-shrink: 0;
+        }
+
+        #main-content {
+            flex-grow: 1;
+            padding: 30px;
+            overflow-y: auto;
+        }
+
+        #sidebar .logo {
+            text-align: center;
+            margin-bottom: 30px;
+            flex-shrink: 0;
+        }
+
+        #sidebar .logo i {
+            font-size: 2rem;
+            color: var(--accent-color);
+        }
+
+        #sidebar .logo h2 {
+            margin: 10px 0 0 0;
+            font-size: 1.5rem;
+        }
+
+        #sidebar nav {
+            flex-grow: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+
+        #sidebar nav ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        #sidebar nav ul li a {
+            display: flex;
+            align-items: center;
+            padding: 15px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            font-weight: 500;
+        }
+
+        #sidebar nav ul li a:hover,
+        #sidebar nav ul li a.active {
+            background-color: var(--accent-color);
+            color: #fff;
+        }
+
+        #sidebar nav ul li a i {
+            margin-right: 15px;
+            width: 20px;
+            text-align: center;
+        }
+
+        .sidebar-bottom {
+            margin-top: auto;
+            padding-top: 20px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .btn-logout {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            padding: 12px;
+            border: 1px solid var(--red-text);
+            border-radius: 8px;
+            background-color: transparent;
+            color: var(--red-text);
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-logout:hover {
+            background-color: var(--red-text);
+            color: white;
+        }
+
+        #header-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .header-left h1 {
+            margin: 0;
+            font-size: 1.75rem;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+        }
+
+        .user-info {
+            font-weight: 500;
+        }
+
+        .filter-container {
+            position: relative;
+        }
+
+        .filter-btn {
+            background-color: var(--card-color);
+            color: var(--text-color);
+            border: 1px solid var(--border-color);
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-family: var(--font-family);
+            font-weight: 500;
+        }
+
+        .filter-dropdown {
+            display: none;
+            position: absolute;
+            top: 100%;
+            left: 0;
+            background-color: var(--card-color);
+            min-width: 200px;
+            box-shadow: 0px 8px 16px 0px rgba(0, 0, 0, 0.1);
+            z-index: 100;
+            border-radius: 8px;
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            margin-top: 8px;
+        }
+
+        #month-filter-dropdown .month-filter-dropdown-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 5px;
+        }
+
+        #year-filter-dropdown .year-filter-dropdown-content {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .filter-dropdown-content label {
+            display: block;
+            padding: 5px 10px;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 0.9em;
+            user-select: none;
+        }
+
+        .filter-dropdown-content label:hover {
+            background-color: var(--bg-color);
+        }
+
+        .filter-actions {
+            border-top: 1px solid var(--border-color);
+            margin-top: 10px;
+            padding-top: 10px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .filter-actions button {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 0.9em;
+            padding: 5px;
+        }
+
+        .filter-actions button:hover {
+            color: var(--accent-color);
+        }
+
+        .theme-switch-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .theme-switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 26px;
+        }
+
+        .theme-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 26px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 20px;
+            width: 20px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        input:checked+.slider {
+            background-color: var(--accent-color);
+        }
+
+        input:checked+.slider:before {
+            transform: translateX(24px);
+        }
+
+        .page {
+            display: none;
+        }
+
+        .page.active {
+            display: block;
+            animation: fadeIn 0.5s;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                translateY(0);
+            }
+        }
+
+        .kpi-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .kpi-card {
+            background-color: var(--card-color);
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+        }
+
+        .kpi-card h3 {
+            margin: 0 0 10px 0;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        .kpi-card p {
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin: 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .chart-grid-container {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .overview-chart-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 20px;
+        }
+
+        .chart-card {
+            background-color: var(--card-color);
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chart-card h3 {
+            margin-top: 0;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+            flex-shrink: 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+        }
+
+        .chart-content-wrapper {
+            flex-grow: 1;
+            min-height: 0;
+        }
+
+        .table-container {
+            overflow: auto;
+            max-height: 450px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+
+        th,
+        td {
+            padding: 10px 12px;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+            white-space: nowrap;
+        }
+
+        thead th {
+            background-color: var(--table-header-color);
+            font-weight: 600;
+            position: -webkit-sticky;
+            position: sticky;
+            z-index: 3;
+            text-align: center;
+        }
+
+        thead th[rowspan='2'] {
+            vertical-align: middle;
+        }
+
+        tbody tr:hover {
+            background-color: var(--highlight-bg);
+        }
+
+        tfoot td {
+            font-weight: bold;
+            background-color: var(--table-header-color);
+            text-align: center;
+        }
+
+        tfoot td:first-child {
+            text-align: left;
+        }
+
+        tbody td {
+            text-align: center;
+        }
+
+        tbody td:first-child {
+            text-align: left;
+        }
+
+        #loading {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.85);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            color: #555;
+        }
+
+        #loading p {
+            font-size: 1.5rem;
+        }
+
+        #loading .spinner {
+            font-size: 3rem;
+            color: var(--accent-color);
+            animation: spin 1.5s linear infinite;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        body.dark-theme #loading {
+            background: rgba(0, 0, 0, 0.85);
+            color: #ccc;
+        }
+
+        .fa-crown {
+            color: var(--gold-color);
+            margin-left: 8px;
+        }
+
+        .team-grid-container {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 20px;
+        }
+
+        .team-card {
+            background-color: var(--card-color);
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid var(--border-color);
+            transition: border-color 0.3s, box-shadow 0.3s;
+        }
+
+        .team-card h2 {
+            border-bottom: 2px solid var(--accent-color);
+            padding-bottom: 0.5rem;
+            margin-top: 0;
+            margin-bottom: 1rem;
+        }
+
+        .product-controls {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .progress-up {
+            color: var(--green-text);
+        }
+
+        .progress-down {
+            color: var(--red-text);
+        }
+
+        .fa-trophy,
+        .fa-star {
+            color: var(--gold-color);
+            margin-left: 10px;
+        }
+
+        .top-team-card {
+            border-color: var(--gold-color);
+            box-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+        }
+
+        .kpi-group-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .kpi-subgroup h3 {
+            margin-bottom: 1rem;
+            border-left: 3px solid var(--accent-color);
+            padding-left: 10px;
+        }
+
+        .kpi-subgroup .kpi-container {
+            grid-template-columns: 1fr 1fr;
+            margin-bottom: 0;
+        }
+
+        tr.highlight-top-overall {
+            background-color: var(--highlight-bg) !important;
+            font-weight: bold;
+        }
+
+        .product-analysis-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+            align-items: stretch;
+        }
+
+        .toggle-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: var(--text-secondary);
+            font-size: 1rem;
+            padding: 0 5px;
+        }
+
+        .toggle-btn:hover {
+            color: var(--accent-color);
+        }
+
+        .detail-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            align-items: flex-start;
+        }
+
+        .pivot-table {
+            border-collapse: separate;
+        }
+
+        .pivot-table th,
+        .pivot-table td {
+            min-width: 90px;
+            font-size: 0.85em;
+            padding: 8px 5px;
+        }
+
+        .pivot-table thead th {
+            background-color: var(--table-header-color);
+        }
+
+        .pivot-table thead tr:first-of-type th {
+            top: 0;
+            z-index: 4;
+        }
+
+        .pivot-table thead tr:nth-of-type(2) th {
+            top: 42px;
+            border-bottom: 2px solid var(--border-color);
+        }
+
+        .pivot-table thead th:first-child,
+        .pivot-table tbody td:first-child,
+        .pivot-table tfoot td:first-child {
+            position: -webkit-sticky;
+            position: sticky;
+            left: 0;
+            z-index: 2;
+            background-color: var(--card-color);
+            width: 100px;
+            max-width: 100px;
+        }
+
+        .pivot-table th.employee-group-start,
+        .pivot-table td.employee-group-start {
+            border-left: 2px solid var(--accent-color);
+        }
+
+        .pivot-table .employee-group-alt {
+            background-color: var(--highlight-bg);
+        }
+
+        .pivot-table tr.today-highlight td {
+            background-color: var(--today-highlight-bg);
+            font-weight: bold;
+        }
+
+        .pivot-table tr.today-highlight td:first-child {
+            background-color: var(--today-highlight-bg) !important;
+        }
+
+        .summary-table {
+            width: 100%;
+            font-size: 0.95em;
+        }
+
+        .summary-table td {
+            padding: 12px;
+            border-bottom: 1px solid var(--border-color);
+            text-align: right;
+        }
+
+        .summary-table td:first-child {
+            font-weight: 500;
+            color: var(--text-secondary);
+            text-align: left;
+        }
+
+        .summary-table td:last-child {
+            font-weight: 600;
+        }
+
+        .summary-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .summary-table thead th {
+            text-align: right;
+        }
+
+        .summary-table thead th:first-child {
+            text-align: left;
+        }
+
+        .summary-table tfoot td {
+            text-align: right;
+        }
+
+        .summary-table tfoot td:first-child {
+            text-align: left;
+        }
+
+        .page-filter-select {
+            padding: 8px;
+            border-radius: 5px;
+            border: 1px solid var(--border-color);
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: var(--font-family);
+            width: 100%;
+        }
+
+        .page-controls-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .page-controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .page-controls .chart-card {
+            flex-grow: 1;
+            padding: 15px;
+        }
+
+        .page-controls .action-button {
+            padding: 8px 16px;
+            font-family: var(--font-family);
+            font-weight: 500;
+            cursor: pointer;
+            border-radius: 8px;
+            background-color: var(--accent-color);
+            color: white;
+            border: 1px solid var(--accent-color);
+            text-align: center;
+        }
+
+        .page-controls .action-button:hover {
+            background-color: transparent;
+            color: var(--accent-color);
+        }
+
+        .check-in-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .check-in-item {
+            display: flex;
+            align-items: center;
+            background-color: var(--bg-color);
+            padding: 1rem;
+            border-radius: 8px;
+        }
+
+        .check-in-item label {
+            flex-grow: 1;
+            margin-left: 1rem;
+            cursor: pointer;
+        }
+
+        .check-in-item input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1001;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0, 0, 0, 0.5);
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background-color: var(--card-color);
+            margin: auto;
+            padding: 25px;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            width: 90%;
+            max-width: 800px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+            position: relative;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 15px;
+            margin-bottom: 15px;
+        }
+
+        .close-btn {
+            color: var(--text-secondary);
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .close-btn:hover,
+        .close-btn:focus {
+            color: var(--text-color);
+        }
+
+        .modal-body {
+            max-height: 60vh;
+            overflow-y: auto;
+        }
+
+        #check-in-submit-btn {
+            padding: 12px 28px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            border-radius: 30px;
+            border: none;
+            transition: all 0.2s ease-in-out;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        #check-in-submit-btn:not(:disabled):hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(94, 114, 228, 0.3);
+        }
+
+        #check-in-submit-btn:disabled {
+            background-color: #8898aa;
+            cursor: not-allowed;
+            opacity: 0.7;
+            transform: none;
+            box-shadow: none;
+        }
+
+        body.dark-theme #check-in-submit-btn:not(:disabled):hover {
+            box-shadow: 0 4px 12px rgba(137, 101, 224, 0.3);
+        }
+
+        body.dark-theme #check-in-submit-btn:disabled {
+            background-color: #525f7f;
+        }
+
+
+        @media (max-width: 1200px) {
+
+            .team-grid-container,
+            .overview-chart-grid,
+            .kpi-group-container,
+            .product-analysis-grid,
+            .detail-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 992px) {
+            #sidebar {
+                display: none;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="login-page">
+        <div class="login-card">
+            <div class="login-header">
+                <i class="fa-solid fa-chart-pie"></i>
+                <h1>Sales Dashboard</h1>
+            </div>
+            <form id="login-form">
+                <div class="input-group">
+                    <label for="username">User</label>
+                    <input type="text" id="username" name="username" required>
+                </div>
+                <div class="input-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" required>
+                </div>
+                <div id="login-error"></div>
+                <button type="submit" class="btn-login">Login</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="dashboard-wrapper" style="display: none;">
+        <div id="sidebar">
+            <div class="logo"><i class="fa-solid fa-chart-pie"></i>
+                <h2>Dashboard</h2>
+            </div>
+            <nav>
+                <ul>
+                    <li><a href="#" class="nav-link active" data-page="page-overview"><i class="fa-solid fa-house"></i>
+                            ภาพรวม</a></li>
+                    <li id="nav-team-analysis"><a href="#" class="nav-link" data-page="page-team"><i
+                                class="fa-solid fa-people-group"></i> วิเคราะห์ทีม</a></li>
+                    <li><a href="#" class="nav-link" data-page="page-product"><i class="fa-solid fa-box-open"></i>
+                            วิเคราะห์ผลิตภัณฑ์</a></li>
+                    <li><a href="#" class="nav-link" data-page="page-call-analysis"><i
+                                class="fa-solid fa-phone-volume"></i> วิเคราะห์การโทร</a></li>
+                    <li><a href="#" class="nav-link" data-page="page-detail"><i class="fa-solid fa-users"></i>
+                            วิเคราะห์รายบุคคล</a></li>
+                    <li id="nav-check-in"><a href="#" class="nav-link" data-page="page-check-in"><i
+                                class="fa-solid fa-user-check"></i> เช็คชื่อรายวัน</a></li>
+                </ul>
+            </nav>
+            <div class="sidebar-bottom">
+                <button id="logout-btn" class="btn-logout"><i class="fa-solid fa-right-from-bracket"></i>
+                    ออกจากระบบ</button>
+            </div>
+        </div>
+
+        <main id="main-content">
+            <div id="header-bar">
+                <div class="header-left">
+                    <h1 id="page-title">ภาพรวม</h1>
+                    <div class="filter-container">
+                        <button id="year-filter-btn" class="filter-btn">ทุกปี</button>
+                        <div id="year-filter-dropdown" class="filter-dropdown">
+                            <div class="filter-dropdown-content year-filter-dropdown-content"></div>
+                            <div class="filter-actions"><button id="year-select-all">เลือกทั้งหมด</button><button
+                                    id="year-clear-all">ล้าง</button></div>
+                        </div>
+                    </div>
+                    <div class="filter-container">
+                        <button id="month-filter-btn" class="filter-btn">ทุกเดือน</button>
+                        <div id="month-filter-dropdown" class="filter-dropdown">
+                            <div class="filter-dropdown-content month-filter-dropdown-content"></div>
+                            <div class="filter-actions"><button id="month-select-all">เลือกทั้งหมด</button><button
+                                    id="month-clear-all">ล้าง</button></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="header-right">
+                    <span id="user-info" class="user-info"></span>
+                    <div class="theme-switch-wrapper">
+                        <i class="fa-solid fa-sun"></i>
+                        <label class="theme-switch"><input type="checkbox" id="theme-toggle"><span
+                                class="slider"></span></label>
+                        <i class="fa-solid fa-moon"></i>
+                    </div>
+                </div>
+            </div>
+
+            <div id="loading"><i class="fa-solid fa-spinner spinner"></i>
+                <p>กำลังประมวลผลข้อมูล...</p>
+            </div>
+
+            <div id="dashboardContent" style="display:none;">
+                <div id="page-overview" class="page active">
+                    <div class="kpi-container" id="kpi-container-overview"></div>
+                    <div class="overview-chart-grid">
+                        <div class="chart-card">
+                            <h3>ยอดขายรายบุคคล (Top 10)</h3>
+                            <div id="sales-by-employee-chart"></div>
+                        </div>
+                        <div class="chart-card">
+                            <h3>ยอดขายตามประเภทสินค้า (All Time)</h3>
+                            <div id="sales-by-category-chart"></div>
+                        </div>
+                    </div>
+                    <div class="chart-card" style="margin-top: 20px;">
+                        <h3>ยอดขายและการเติบโตรายเดือน (ปีล่าสุด)</h3>
+                        <div id="monthly-sales-growth-chart"></div>
+                    </div>
+                    <div id="daily-sales-chart-card" class="chart-card" style="margin-top: 20px;"></div>
+                </div>
+                <div id="page-team" class="page">
+                    <div class="kpi-container" id="kpi-container-team"></div>
+                    <div id="team-grid-container" class="team-grid-container"></div>
+                </div>
+                <div id="page-product" class="page">
+                    <div class="page-controls-grid">
+                        <div class="chart-card">
+                            <label for="product-employee-filter">กรองตามพนักงาน</label>
+                            <select id="product-employee-filter" class="page-filter-select"></select>
+                        </div>
+                    </div>
+                    <div class="product-analysis-grid">
+                        <div class="chart-card">
+                            <h3>5 อันดับสินค้าขายดี (มูลค่า)</h3>
+                            <div class="chart-content-wrapper" id="top-products-value-chart"></div>
+                        </div>
+                        <div class="chart-card">
+                            <h3>5 อันดับสินค้าขายดี (จำนวน)</h3>
+                            <div class="chart-content-wrapper" id="top-products-qty-chart"></div>
+                        </div>
+                        <div class="chart-card">
+                            <h3>ยอดขายตามประเภทลูกค้า</h3>
+                            <div class="chart-content-wrapper" id="customer-type-table-container"></div>
+                        </div>
+                    </div>
+                    <div class="chart-card">
+                        <h3>ยอดขายรายผลิตภัณฑ์ (รายเดือนตามปีที่เลือก)</h3>
+                        <div class="product-controls"><label>มุมมองตาราง:</label><label><input type="radio"
+                                    id="view-sales" name="view-type" value="sales" checked> ยอดขาย
+                                (บาท)</label><label><input type="radio" id="view-quantity" name="view-type"
+                                    value="quantity"> จำนวน (ชิ้น)</label></div>
+                        <div class="table-container" id="product-table-container"></div>
+                    </div>
+                </div>
+                <div id="page-call-analysis" class="page">
+                    <div class="page-controls">
+                        <div class="chart-card"><select id="team-call-filter" class="page-filter-select"></select></div>
+                        <button id="low-call-time-btn" class="action-button"><i class="fa-solid fa-flag"></i>
+                            รายงานโทรต่ำกว่าเป้า</button>
+                    </div>
+                    <div id="call-analysis-content" style="display: none;">
+                        <div class="chart-grid-container">
+                            <div class="chart-card">
+                                <h3>สรุปข้อมูลการโทร (ตามทีมที่เลือก)<button id="toggle-summary-table"
+                                        class="toggle-btn" title="ย่อ/ขยายตาราง"><i
+                                            class="fa-solid fa-chevron-up"></i></button></h3>
+                                <div class="table-container" id="call-status-table-container"></div>
+                            </div>
+                            <div class="chart-card">
+                                <h3>ไทม์ไลน์เวลาโทรรายสัปดาห์ (ตามทีมที่เลือก)<button id="toggle-weekly-table"
+                                        class="toggle-btn" title="ย่อ/ขยายตาราง"><i
+                                            class="fa-solid fa-chevron-up"></i></button></h3>
+                                <div class="table-container" id="call-weekly-timeline-container"></div>
+                            </div>
+                        </div>
+                        <div class="chart-card" style="margin-top: 20px;">
+                            <h3>ข้อมูลการโทรรายวัน (ตามทีมที่เลือก)<button id="toggle-daily-table" class="toggle-btn"
+                                    title="ย่อ/ขยายตาราง"><i class="fa-solid fa-chevron-up"></i></button></h3>
+                            <div class="table-container" id="daily-call-table-container"></div>
+                        </div>
+                    </div>
+                    <div id="call-analysis-prompt"
+                        style="text-align: center; padding: 50px; color: var(--text-secondary);">
+                        <h2><i class="fa-solid fa-people-group"></i> กรุณาเลือกทีมเพื่อดูข้อมูล</h2>
+                    </div>
+                </div>
+                <div id="page-detail" class="page">
+                    <div class="chart-card" style="margin-bottom: 20px; padding: 15px;">
+                        <select id="detail-employee-filter" class="page-filter-select"></select>
+                    </div>
+                    <div id="employee-detail-content" style="display: none;">
+                        <div class="kpi-container" id="employee-kpi-container"></div>
+                        <div class="detail-grid">
+                            <div class="chart-card">
+                                <h3>สรุปประสิทธิภาพการขาย</h3>
+                                <div id="employee-sales-summary-table"></div>
+                            </div>
+                            <div class="chart-card">
+                                <h3>สรุปประสิทธิภาพต่างๆของพนักงาน</h3>
+                                <div id="employee-work-call-summary-table"></div>
+                            </div>
+                        </div>
+                        <div class="chart-card" style="margin-top: 20px;">
+                            <h3>ยอดขายรายเดือน (ปีล่าสุด)</h3>
+                            <div id="employee-monthly-sales-chart"></div>
+                        </div>
+                        <div class="detail-grid" style="margin-top: 20px;">
+                            <div class="chart-card">
+                                <h3>สัดส่วนยอดขายตามประเภทสินค้า (All-Time)</h3>
+                                <div id="employee-sales-by-cat-chart" style="min-height: 300px;"></div>
+                            </div>
+                            <div class="chart-card">
+                                <h3>5 อันดับสินค้าขายดี (All-Time)</h3>
+                                <div id="employee-top-products-table" class="table-container"
+                                    style="max-height: 300px;"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="employee-detail-prompt"
+                        style="text-align: center; padding: 50px; color: var(--text-secondary);">
+                        <h2><i class="fa-solid fa-user-check"></i> กรุณาเลือกพนักงานเพื่อดูข้อมูล</h2>
+                    </div>
+                </div>
+                <div id="page-check-in" class="page">
+                    <div class="chart-card">
+                        <div
+                            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                            <h3 style="margin:0; border:none; padding:0;">เช็คชื่อเข้าทำงาน ประจำวันที่ <span
+                                    id="check-in-date"></span></h3>
+                        </div>
+                        <div id="check-in-list" class="check-in-list"></div>
+                        <div style="margin-top: 1.5rem; text-align: right;">
+                            <button id="check-in-submit-btn" class="action-button">บันทึกการเช็คชื่อ</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div id="low-call-time-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>พนักงานที่โทรเฉลี่ยต่อวันน้อยกว่าเป้า</h2>
+                <span class="close-btn" id="close-low-call-modal-btn">&times;</span>
+            </div>
+            <div class="modal-body">
+                <p style="font-size: 0.9em; color: var(--text-secondary);">ข้อมูลตามช่วงเวลาที่ฟิลเตอร์
+                    (ไม่รวมฟิลเตอร์ทีม)</p>
+                <div class="table-container">
+                    <table id="low-call-time-table">
+                        <thead>
+                            <tr>
+                                <th>ลำดับ</th>
+                                <th>รายชื่อ</th>
+                                <th>วันทำงาน</th>
+                                <th>เวลาโทรทั้งหมด (นาที)</th>
+                                <th>เวลาโทรเฉลี่ย/วัน (นาที)</th>
+                                <th>ยอดขายทั้งหมด (บาท)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="low-call-time-table-body"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="alert-modal" class="modal">
+        <div class="modal-content" style="max-width: 400px; text-align: center;">
+            <div class="modal-body">
+                <i id="alert-modal-icon" class="fa-solid" style="font-size: 3rem; margin-bottom: 1rem;"></i>
+                <h3 id="alert-modal-title" style="border:none; margin-bottom: 0.5rem;">สำเร็จ</h3>
+                <p id="alert-modal-message" style="margin-bottom: 1.5rem; color: var(--text-secondary);"></p>
+                <button id="alert-modal-close-btn" class="action-button">ตกลง</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentUser = null;
+        let preAggregatedData = null;
+        let charts = {};
+        const thaiMonths = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+        const thaiMonthsFull = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
+        let finalEmployeeData = [];
+        let inactivityTimer;
+
+        // ✅ NEW: ฟังก์ชัน Format ตัวเลขสำหรับ Data Label โดยเฉพาะ
+        const formatNumberWithDecimals = value => (value || 0).toLocaleString('th-TH', {
+            minimumFractionDigits: 0, // ปรับตามความเหมาะสม
+            maximumFractionDigits: 2
+        });
+
+        document.addEventListener('DOMContentLoaded', () => {
+            setupTheme();
+            const storedUserInfo = sessionStorage.getItem('currentUserInfo');
+            if (storedUserInfo) {
+                try {
+                    const userInfo = JSON.parse(storedUserInfo);
+                    if (userInfo && userInfo.name && userInfo.team) {
+                        onLoginSuccess(userInfo);
+                    } else {
+                        sessionStorage.removeItem('currentUserInfo');
+                        initializeLoginPage();
+                    }
+                } catch (e) {
+                    sessionStorage.removeItem('currentUserInfo');
+                    initializeLoginPage();
+                }
+            } else {
+                initializeLoginPage();
+            }
+        });
+
+        function initializeLoginPage() {
+            const loginForm = document.getElementById('login-form');
+            if (loginForm) {
+                loginForm.addEventListener('submit', handleLogin);
+            }
+        }
+
+        function resetInactivityTimer() {
+            clearTimeout(inactivityTimer);
+            const timeoutDuration = 30 * 60 * 1000;
+            inactivityTimer = setTimeout(() => {
+                showCustomAlert('Session หมดอายุ', 'ไม่มีการใช้งานนานเกินไป ระบบจะทำการ Logout อัตโนมัติ', false, handleLogout);
+            }, timeoutDuration);
+        }
+
+        function setupActivityListeners() {
+            stopActivityListeners();
+            window.addEventListener('mousemove', resetInactivityTimer);
+            window.addEventListener('mousedown', resetInactivityTimer);
+            window.addEventListener('keypress', resetInactivityTimer);
+            window.addEventListener('scroll', resetInactivityTimer, true);
+        }
+
+        function stopActivityListeners() {
+            clearTimeout(inactivityTimer);
+            window.removeEventListener('mousemove', resetInactivityTimer);
+            window.removeEventListener('mousedown', resetInactivityTimer);
+            window.removeEventListener('keypress', resetInactivityTimer);
+            window.removeEventListener('scroll', resetInactivityTimer, true);
+        }
+
+        function handleLogin(event) {
+            event.preventDefault();
+            const loginBtn = event.target.querySelector('.btn-login');
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const errorDiv = document.getElementById('login-error');
+
+            errorDiv.textContent = '';
+            loginBtn.textContent = 'กำลังตรวจสอบ...';
+            loginBtn.disabled = true;
+
+            google.script.run.withSuccessHandler(userInfo => {
+                if (userInfo && userInfo.success) {
+                    sessionStorage.setItem('currentUserInfo', JSON.stringify(userInfo));
+                    onLoginSuccess(userInfo);
+                } else {
+                    errorDiv.textContent = userInfo.message || 'เกิดข้อผิดพลาด';
+                    loginBtn.textContent = 'Login';
+                    loginBtn.disabled = false;
+                }
+            }).withFailureHandler(err => {
+                errorDiv.textContent = 'ไม่สามารถเชื่อมต่อกับ Server ได้';
+                loginBtn.textContent = 'Login';
+                loginBtn.disabled = false;
+            }).authenticateUser(username, password);
+        }
+
+        function onLoginSuccess(userInfo) {
+            currentUser = userInfo;
+            document.getElementById('login-page').style.display = 'none';
+            document.getElementById('dashboard-wrapper').style.display = 'flex';
+            document.getElementById('user-info').textContent = `สวัสดี, ${currentUser.name}`;
+
+            const teamAnalysisNav = document.getElementById('nav-team-analysis');
+            const checkInNav = document.getElementById('nav-check-in');
+
+            teamAnalysisNav.style.display = 'block';
+
+            if (currentUser.team !== 'All') {
+                checkInNav.style.display = 'block';
+            } else {
+                checkInNav.style.display = 'none';
+            }
+
+            document.getElementById('logout-btn').addEventListener('click', handleLogout);
+            document.getElementById('loading').style.display = 'flex';
+            document.getElementById('dashboardContent').style.display = 'none';
+
+            setupNavigation();
+            setupEventListeners();
+            setupActivityListeners();
+            resetInactivityTimer();
+
+            google.script.run.withSuccessHandler(onDataLoaded).withFailureHandler(showError).getPreAggregatedData(currentUser);
+        }
+
+        function handleLogout() {
+            stopActivityListeners();
+            sessionStorage.removeItem('currentUserInfo');
+            currentUser = null;
+            preAggregatedData = null;
+            finalEmployeeData = [];
+            document.getElementById('dashboard-wrapper').style.display = 'none';
+            document.getElementById('login-page').style.display = 'block';
+            document.getElementById('username').value = '';
+            document.getElementById('password').value = '';
+            document.getElementById('login-error').textContent = '';
+            const loginBtn = document.querySelector('.btn-login');
+            if (loginBtn) {
+                loginBtn.disabled = false;
+                loginBtn.textContent = 'Login';
+            }
+            const loginForm = document.getElementById('login-form');
+            if (loginForm) {
+                loginForm.removeEventListener('submit', handleLogin);
+                loginForm.addEventListener('submit', handleLogin);
+            }
+            document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+            const overviewLink = document.querySelector('.nav-link[data-page="page-overview"]');
+            if (overviewLink) overviewLink.classList.add('active');
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            const overviewPage = document.getElementById('page-overview');
+            if (overviewPage) overviewPage.classList.add('active');
+            document.getElementById('page-title').textContent = 'ภาพรวม';
+        }
+
+        function onDataLoaded(data) {
+            if (data.error) { showError({ message: data.error }); return; }
+            preAggregatedData = data;
+
+            setupYearFilter(data.allYears);
+            setupMonthFilter();
+            setInitialFilters();
+
+            const teamFilterDropdown = document.getElementById('team-call-filter');
+            if (teamFilterDropdown) {
+                teamFilterDropdown.innerHTML = '<option value="">-- กรุณาเลือกทีม --</option>';
+                const teams = preAggregatedData.teamsData ? Object.keys(preAggregatedData.teamsData).sort() : [];
+                teams.forEach(teamName => {
+                    const option = document.createElement('option');
+                    option.value = teamName;
+                    option.textContent = teamName;
+                    teamFilterDropdown.appendChild(option);
+                });
+                if (teams.length === 1) {
+                    teamFilterDropdown.value = teams[0];
+                }
+            }
+
+            const employeeFilters = [
+                document.getElementById('detail-employee-filter'),
+                document.getElementById('product-employee-filter')
+            ];
+
+            const employeesForDropdown = (currentUser.team === 'All')
+                ? preAggregatedData.allEmployeesForFilter
+                : preAggregatedData.employeeData.map(e => e.employeeInfo);
+
+            employeeFilters.forEach(dropdown => {
+                if (dropdown) {
+                    dropdown.innerHTML = '';
+                    if (dropdown.id === 'product-employee-filter') {
+                        dropdown.innerHTML = '<option value="All">All (พนักงานทั้งหมด)</option>';
+                    } else {
+                        dropdown.innerHTML = '<option value="">-- กรุณาเลือกพนักงาน --</option>';
+                    }
+
+                    employeesForDropdown.forEach(emp => {
+                        const option = document.createElement('option');
+                        option.value = emp.id;
+                        option.textContent = emp.name;
+                        dropdown.appendChild(option);
+                    });
+                }
+            });
+
+            setTimeout(updateDashboardView, 0);
+
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('dashboardContent').style.display = 'block';
+        }
+
+        function setupEventListeners() {
+            document.querySelectorAll('input[name="view-type"]').forEach(radio => radio.addEventListener('change', () => updateDashboardView()));
+            const teamFilter = document.getElementById('team-call-filter');
+            if (teamFilter) teamFilter.addEventListener('change', () => renderCallAnalysisPage(finalEmployeeData));
+            const employeeDetailFilter = document.getElementById('detail-employee-filter');
+            if (employeeDetailFilter) employeeDetailFilter.addEventListener('change', renderEmployeeDetailPage);
+            const productEmployeeFilter = document.getElementById('product-employee-filter');
+            if (productEmployeeFilter) productEmployeeFilter.addEventListener('change', updateDashboardView);
+            const checkinSubmitBtn = document.getElementById('check-in-submit-btn');
+            if (checkinSubmitBtn) checkinSubmitBtn.addEventListener('click', handleCheckInSubmit);
+            setupToggler('toggle-summary-table', 'call-status-table-container');
+            setupToggler('toggle-weekly-table', 'call-weekly-timeline-container');
+            setupToggler('toggle-daily-table', 'daily-call-table-container');
+
+            const lowCallModal = document.getElementById('low-call-time-modal');
+            const openLowCallBtn = document.getElementById('low-call-time-btn');
+            const closeLowCallBtn = document.getElementById('close-low-call-modal-btn');
+            if (lowCallModal && openLowCallBtn && closeLowCallBtn) {
+                openLowCallBtn.onclick = function () {
+                    renderLowCallTimeReport();
+                    lowCallModal.style.display = "flex";
+                }
+                closeLowCallBtn.onclick = function () {
+                    lowCallModal.style.display = "none";
+                }
+            }
+
+            window.onclick = function (event) {
+                const lowCallModal = document.getElementById('low-call-time-modal');
+                const alertModal = document.getElementById('alert-modal');
+                if (event.target == lowCallModal) lowCallModal.style.display = "none";
+                if (event.target == alertModal) alertModal.style.display = "none";
+            }
+        }
+
+        function showCustomAlert(title, message, isSuccess = true, onConfirm = null) {
+            const modal = document.getElementById('alert-modal');
+            const titleEl = document.getElementById('alert-modal-title');
+            const messageEl = document.getElementById('alert-modal-message');
+            const iconEl = document.getElementById('alert-modal-icon');
+            const confirmBtn = document.getElementById('alert-modal-close-btn');
+
+            titleEl.textContent = title;
+            messageEl.innerHTML = message.replace(/\n/g, '<br>');
+
+            if (isSuccess) {
+                iconEl.className = 'fa-solid fa-check-circle';
+                iconEl.style.color = 'var(--green-text)';
+            } else {
+                iconEl.className = 'fa-solid fa-times-circle';
+                iconEl.style.color = 'var(--red-text)';
+            }
+
+            modal.style.display = 'flex';
+
+            confirmBtn.onclick = () => {
+                modal.style.display = 'none';
+                if (typeof onConfirm === 'function') {
+                    onConfirm();
+                }
+            };
+        }
+
+        function handleCheckInSubmit() {
+            const checkboxes = document.querySelectorAll('#check-in-list input[type="checkbox"]:checked');
+            const checkedInEmployeeIds = Array.from(checkboxes).map(cb => cb.value);
+
+            if (checkedInEmployeeIds.length === 0) {
+                showCustomAlert('แจ้งเตือน', 'กรุณาเลือกพนักงานที่ต้องการเช็คชื่ออย่างน้อย 1 คน', false);
+                return;
+            }
+
+            const btn = document.getElementById('check-in-submit-btn');
+            btn.textContent = 'กำลังบันทึก...';
+            btn.disabled = true;
+
+            google.script.run
+                .withSuccessHandler(response => {
+                    const onConfirmCallback = () => {
+                        if (response.savedCount > 0) {
+                            document.getElementById('loading').style.display = 'flex';
+                            google.script.run
+                                .withSuccessHandler(onDataLoaded)
+                                .withFailureHandler(showError)
+                                .getPreAggregatedData(currentUser);
+                        } else {
+                            btn.disabled = false;
+                            btn.textContent = 'บันทึกการเช็คชื่อ';
+                        }
+                    };
+                    showCustomAlert(response.success ? 'สำเร็จ!' : 'แจ้งเตือน', response.message, response.success, onConfirmCallback);
+                })
+                .withFailureHandler(err => {
+                    showCustomAlert('เกิดข้อผิดพลาด', err.message, false);
+                    btn.textContent = 'บันทึกการเช็คชื่อ';
+                    btn.disabled = false;
+                })
+                .submitDailyCheckIn(checkedInEmployeeIds, currentUser);
+        }
+
+        function updateDashboardView() {
+            if (!preAggregatedData || !preAggregatedData.employeeData) {
+                showError({ message: "โครงสร้างข้อมูลที่ได้รับจาก Server ไม่สมบูรณ์" }); return;
+            }
+            destroyCharts();
+            const selectedYears = getSelectedYears();
+            const selectedMonths = getSelectedMonths();
+            updateFilterButtonText('year-filter-btn', selectedYears, preAggregatedData.allYears, 'ปี');
+            updateFilterButtonText('month-filter-btn', selectedMonths, thaiMonthsFull.map((m, i) => i), 'เดือน', thaiMonthsFull);
+
+            finalEmployeeData = preAggregatedData.employeeData.map(emp => {
+                let totalSales = 0, orderCount = 0, bioSales = 0, fertilizerSales = 0, bioOrderCount = 0, fertilizerOrderCount = 0;
+                let totalCallDurationMin = 0, totalConnectedCalls = 0, totalCalls = 0;
+                let workDays = 0, lateMinutes = 0;
+                let fertLargeSales = 0, fertSmallSales = 0, fertLargeOrderCount = 0, fertSmallOrderCount = 0;
+
+                selectedYears.forEach(year => {
+                    if (emp.yearlyMetrics && emp.yearlyMetrics[year]) {
+                        const yearly = emp.yearlyMetrics[year];
+                        selectedMonths.forEach(m_idx => {
+                            totalSales += yearly.totalSales?.[m_idx] || 0; orderCount += yearly.orderCount?.[m_idx] || 0; bioSales += yearly.bioSales?.[m_idx] || 0; fertilizerSales += yearly.fertilizerSales?.[m_idx] || 0; bioOrderCount += yearly.bioOrderCount?.[m_idx] || 0; fertilizerOrderCount += yearly.fertilizerOrderCount?.[m_idx] || 0; totalConnectedCalls += yearly.connectedCalls?.[m_idx] || 0; totalCalls += yearly.totalCalls?.[m_idx] || 0;
+                            fertLargeSales += yearly.fertLargeSales?.[m_idx] || 0;
+                            fertSmallSales += yearly.fertSmallSales?.[m_idx] || 0;
+                            fertLargeOrderCount += yearly.fertLargeOrderCount?.[m_idx] || 0;
+                            fertSmallOrderCount += yearly.fertSmallOrderCount?.[m_idx] || 0;
+                        });
+                    }
+                    if (emp.callStatusMetrics && emp.callStatusMetrics[year]) {
+                        const callStatus = emp.callStatusMetrics[year];
+                        selectedMonths.forEach(m_idx => {
+                            totalCallDurationMin += callStatus.durationMinutes?.[m_idx] || 0;
+                        });
+                    }
+                    if (emp.attendanceMetrics && emp.attendanceMetrics[year]) {
+                        const attendance = emp.attendanceMetrics[year];
+                        selectedMonths.forEach(m_idx => {
+                            workDays += attendance.workDays?.[m_idx] || 0; lateMinutes += attendance.lateMinutes?.[m_idx] || 0;
+                        });
+                    }
+                });
+                return { ...emp, totalSales, orderCount, bioSales, fertilizerSales, bioOrderCount, fertilizerOrderCount, callDurationMin: totalCallDurationMin, connectedCalls: totalConnectedCalls, totalCalls: totalCalls, workDays, lateMinutes, fertLargeSales, fertSmallSales, fertLargeOrderCount, fertSmallOrderCount };
+            });
+
+            if (selectedMonths.length > 0 && selectedYears.length > 0) {
+                finalEmployeeData.forEach(e => e.isTopPerformerOfTheMonth = false);
+                const latestYear = Math.max(...selectedYears);
+                const latestMonth = Math.max(...selectedMonths);
+                for (const teamName in preAggregatedData.teamsData) {
+                    let topMonthlySales = -1;
+                    let topMonthlyPerformerId = null;
+                    const membersInTeam = preAggregatedData.teamsData[teamName];
+                    membersInTeam.forEach(member => {
+                        const empId = member.employeeInfo.id;
+                        const empData = preAggregatedData.employeeData.find(e => e.employeeInfo.id === empId);
+                        if (empData && empData.yearlyMetrics[latestYear] && empData.employeeInfo.position !== 'supervisor') {
+                            const monthlySale = empData.yearlyMetrics[latestYear].totalSales[latestMonth] || 0;
+                            if (monthlySale > 0 && monthlySale >= topMonthlySales) {
+                                topMonthlySales = monthlySale;
+                                topMonthlyPerformerId = empId;
+                            }
+                        }
+                    });
+                    if (topMonthlyPerformerId) {
+                        const topPerformer = finalEmployeeData.find(e => e.employeeInfo.id === topMonthlyPerformerId);
+                        if (topPerformer) topPerformer.isTopPerformerOfTheMonth = true;
+                    }
+                }
+            }
+
+            const finalEmployeeMap = new Map(finalEmployeeData.map(emp => [emp.employeeInfo.id, emp]));
+            const finalTeamsData = {};
+            if (preAggregatedData.teamsData) {
+                for (const teamName in preAggregatedData.teamsData) {
+                    finalTeamsData[teamName] = preAggregatedData.teamsData[teamName].map(originalMember => {
+                        const filteredData = finalEmployeeMap.get(originalMember.employeeInfo.id);
+                        if (!filteredData) return null;
+                        return { ...originalMember, ...filteredData };
+                    }).filter(Boolean);
+                }
+            }
+
+            const teamSalesArray = Object.keys(finalTeamsData).map(teamName => ({ name: teamName, totalSales: finalTeamsData[teamName].reduce((sum, member) => sum + (member.totalSales || 0), 0) })).sort((a, b) => b.totalSales - a.totalSales);
+            const topTeamFiltered = teamSalesArray.length > 0 ? teamSalesArray[0] : { name: 'N/A', sales: 0 };
+            const teamRankMap = new Map(teamSalesArray.map((team, index) => [team.name, index + 1]));
+
+            const productEmpFilter = document.getElementById('product-employee-filter');
+            const selectedProductEmpId = productEmpFilter ? productEmpFilter.value : 'All';
+
+            const sourceProductData = selectedProductEmpId === 'All'
+                ? preAggregatedData.productsData
+                : (preAggregatedData.productMetricsByEmployee[selectedProductEmpId] || {});
+
+            const sourceCustomerTypeData = selectedProductEmpId === 'All'
+                ? preAggregatedData.salesByProdCatAndCustType
+                : (preAggregatedData.customerTypeMetricsByEmployee[selectedProductEmpId] || {});
+
+            const finalAggregatedProducts = Object.entries(sourceProductData).map(([name, data]) => {
+                let totalSales = 0, totalQuantity = 0;
+                selectedYears.forEach(year => {
+                    if (data.yearlySales && data.yearlySales[year]) {
+                        selectedMonths.forEach(m_idx => {
+                            if (selectedMonths.includes(m_idx)) {
+                                totalSales += data.yearlySales[year][m_idx] || 0;
+                                totalQuantity += (data.yearlyQuantity && data.yearlyQuantity[year]) ? (data.yearlyQuantity[year][m_idx] || 0) : 0;
+                            }
+                        });
+                    }
+                });
+                return { name, totalSales, totalQuantity };
+            });
+
+            const finalCustomerTypeData = {};
+            for (const prodCat in sourceCustomerTypeData) {
+                if (prodCat === 'ของแถม') continue;
+                if (!finalCustomerTypeData[prodCat]) {
+                    finalCustomerTypeData[prodCat] = { 'ลูกค้าใหม่': { sales: 0, quantity: 0 }, 'รีออเดอร์': { sales: 0, quantity: 0 } };
+                }
+                const data = sourceCustomerTypeData[prodCat];
+                ['ลูกค้าใหม่', 'รีออเดอร์'].forEach(custType => {
+                    selectedYears.forEach(year => {
+                        if (data[custType] && data[custType].sales[year]) {
+                            selectedMonths.forEach(m_idx => {
+                                if (selectedMonths.includes(m_idx)) {
+                                    finalCustomerTypeData[prodCat][custType].sales += data[custType].sales[year][m_idx] || 0;
+                                    finalCustomerTypeData[prodCat][custType].quantity += data[custType].quantity[year][m_idx] || 0;
+                                }
+                            });
+                        }
+                    });
+                });
+            }
+
+            const viewTypeRadio = document.querySelector('input[name="view-type"]:checked');
+            const viewType = viewTypeRadio ? viewTypeRadio.value : 'sales';
+
+            const unfilteredProductTableData = Object.entries(sourceProductData).map(([name, data]) => {
+                const monthlySales = new Array(12).fill(0);
+                const monthlyQuantity = new Array(12).fill(0);
+                for (const year in data.yearlySales) {
+                    if (selectedYears.includes(parseInt(year))) {
+                        for (let m_idx = 0; m_idx < 12; m_idx++) {
+                            monthlySales[m_idx] += (data.yearlySales[year][m_idx]) || 0;
+                            monthlyQuantity[m_idx] += (data.yearlyQuantity?.[year]?.[m_idx]) || 0;
+                        }
+                    }
+                }
+                return { name, monthlySales, monthlyQuantity };
+            });
+
+            const latestYear = preAggregatedData.allYears.length > 0 ? Math.max(...preAggregatedData.allYears) : new Date().getFullYear();
+            const fixedCurrentYearSales = preAggregatedData.totalSalesByYearMonth[latestYear] || new Array(12).fill(0);
+
+            renderOverviewPage(finalEmployeeData, preAggregatedData.categoryDataForChart, fixedCurrentYearSales);
+            renderTeamPage(preAggregatedData.kpi, topTeamFiltered.name, finalTeamsData, teamRankMap, finalEmployeeData);
+            renderProductPage(finalAggregatedProducts, unfilteredProductTableData, finalCustomerTypeData, viewType);
+            renderCallAnalysisPage(finalEmployeeData);
+            renderEmployeeDetailPage();
+            renderCheckInPage();
+            renderDailySalesChart();
+        }
+
+        function getSelectedYears() { return Array.from(document.querySelectorAll('.year-checkbox:checked')).map(cb => parseInt(cb.value)); }
+        function getSelectedMonths() { return Array.from(document.querySelectorAll('.month-checkbox:checked')).map(cb => parseInt(cb.value)); }
+        function setupToggler(buttonId, containerId) { const toggleBtn = document.getElementById(buttonId); const container = document.getElementById(containerId); if (toggleBtn && container) { toggleBtn.addEventListener('click', () => { const isCollapsed = container.style.display === 'none'; container.style.display = isCollapsed ? 'block' : 'none'; const icon = toggleBtn.querySelector('i'); if (icon) { icon.classList.toggle('fa-chevron-up', isCollapsed); icon.classList.toggle('fa-chevron-down', !isCollapsed); } }); } }
+        function setInitialFilters() { const now = new Date(); const currentYear = now.getFullYear(); const currentMonthIndex = now.getMonth(); document.querySelectorAll('.year-checkbox').forEach(cb => cb.checked = false); document.querySelectorAll('.month-checkbox').forEach(cb => cb.checked = false); const yearCheckbox = document.querySelector(`.year-checkbox[value="${currentYear}"]`); if (yearCheckbox) { yearCheckbox.checked = true; } else { const allYearCheckboxes = document.querySelectorAll('.year-checkbox'); if (allYearCheckboxes.length > 0) { allYearCheckboxes[allYearCheckboxes.length - 1].checked = true; } } const monthCheckbox = document.querySelector(`.month-checkbox[value="${currentMonthIndex}"]`); if (monthCheckbox) { monthCheckbox.checked = true; } }
+        function setupTheme() { const toggle = document.getElementById('theme-toggle'); if (toggle) { const applyTheme = (theme) => { document.body.classList.toggle('dark-theme', theme === 'dark'); toggle.checked = theme === 'dark'; }; toggle.addEventListener('change', () => { const newTheme = toggle.checked ? 'dark' : 'light'; localStorage.setItem('dashboardTheme', newTheme); updateDashboardView(); }); const savedTheme = localStorage.getItem('dashboardTheme') || 'light'; applyTheme(savedTheme); } }
+        function setupNavigation() { document.querySelectorAll('.nav-link').forEach(link => { link.addEventListener('click', e => { e.preventDefault(); const pageId = e.currentTarget.getAttribute('data-page'); const pageTitle = e.currentTarget.textContent.trim(); document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active')); e.currentTarget.classList.add('active'); document.querySelectorAll('.page').forEach(p => p.classList.remove('active')); document.getElementById(pageId).classList.add('active'); document.getElementById('page-title').textContent = pageTitle; }); }); }
+        function setupFilter(options) { const { btnId, dropdownId, contentClass, checkboxClass, selectAllId, clearAllId, items, useValueAsLabel } = options; const dropdown = document.getElementById(dropdownId); const btn = document.getElementById(btnId); if (!dropdown || !btn) return; const content = dropdown.querySelector(contentClass); content.innerHTML = ''; items.forEach((item, index) => { const value = useValueAsLabel ? item : index; const label = useValueAsLabel ? item : item; content.innerHTML += `<label><input type="checkbox" class="${checkboxClass}" value="${value}"> ${label}</label>`; }); btn.addEventListener('click', (e) => { e.stopPropagation(); dropdown.style.display = dropdown.style.display === 'block' ? 'none' : 'block'; }); document.addEventListener('click', (e) => { if (!btn.contains(e.target) && !dropdown.contains(e.target)) { dropdown.style.display = 'none'; } }); document.getElementById(selectAllId).addEventListener('click', () => { document.querySelectorAll(`.${checkboxClass}`).forEach(cb => cb.checked = true); updateDashboardView(); }); document.getElementById(clearAllId).addEventListener('click', () => { document.querySelectorAll(`.${checkboxClass}`).forEach(cb => cb.checked = false); updateDashboardView(); }); dropdown.addEventListener('change', updateDashboardView); }
+        function setupYearFilter(years) { if (!years || years.length === 0) return; setupFilter({ btnId: 'year-filter-btn', dropdownId: 'year-filter-dropdown', contentClass: '.year-filter-dropdown-content', checkboxClass: 'year-checkbox', selectAllId: 'year-select-all', clearAllId: 'year-clear-all', items: years, useValueAsLabel: true }); }
+        function setupMonthFilter() { setupFilter({ btnId: 'month-filter-btn', dropdownId: 'month-filter-dropdown', contentClass: '.month-filter-dropdown-content', checkboxClass: 'month-checkbox', selectAllId: 'month-select-all', clearAllId: 'month-clear-all', items: thaiMonthsFull, useValueAsLabel: false }); }
+        function updateFilterButtonText(btnId, selectedItems, allItems, unit, labelMap = null) { const btn = document.getElementById(btnId); if (!btn) return; if (!allItems || allItems.length === 0) { btn.textContent = `ไม่มีข้อมูล ${unit}`; return; } if (selectedItems.length === allItems.length) btn.textContent = `ทุก${unit}`; else if (selectedItems.length === 0) btn.textContent = `ไม่ได้เลือก${unit}`; else if (selectedItems.length === 1) btn.textContent = labelMap ? labelMap[selectedItems[0]] : selectedItems[0]; else btn.textContent = `${selectedItems.length} ${unit}ที่เลือก`; }
+        const formatCurrency = value => (value || 0).toLocaleString('th-TH', { style: 'currency', currency: 'THB', maximumFractionDigits: 0 });
+        const formatNumber = value => (value || 0).toLocaleString('th-TH', { maximumFractionDigits: 0 });
+        const formatMinutes = value => (value || 0).toLocaleString('th-TH', { maximumFractionDigits: 2 });
+        function minutesToHHMMSS(minutes) { if (!minutes || minutes <= 0) return '00:00:00'; const totalSeconds = Math.floor(minutes * 60); const h = Math.floor(totalSeconds / 3600).toString().padStart(2, '0'); const m = Math.floor((totalSeconds % 3600) / 60).toString().padStart(2, '0'); const s = (totalSeconds % 60).toString().padStart(2, '0'); return `${h}:${m}:${s}`; }
+        function formatDateToDDMMYYYY(dateString) { if (!dateString) return ''; const [y, m, d] = dateString.split('-'); return `${d}/${m}/${y}`; }
+        function destroyCharts() { Object.values(charts).forEach(chart => { if (chart && typeof chart.destroy === 'function') chart.destroy(); }); charts = {}; }
+        function showError(error) { console.error(error); const loadingDiv = document.getElementById('loading'); loadingDiv.innerHTML = `<p style="color:red; text-align:center;"><b>เกิดข้อผิดพลาด:</b><br>${error.message}</p>`; loadingDiv.style.display = 'flex'; document.getElementById('dashboardContent').style.display = 'none'; }
+        function renderChart(containerId, options) { const el = document.getElementById(containerId); if (!el) return; el.innerHTML = ''; const isDark = document.body.classList.contains('dark-theme'); const defaultOptions = { chart: { fontFamily: "'Noto Sans Thai', sans-serif", background: 'transparent', foreColor: isDark ? '#e9ecef' : '#343a40' }, noData: { text: 'ไม่มีข้อมูลสำหรับแสดงผล' }, theme: { mode: isDark ? 'dark' : 'light' } }; const finalOptions = { ...defaultOptions, ...options, chart: { ...defaultOptions.chart, ...options.chart } }; const chart = new ApexCharts(el, finalOptions); chart.render(); charts[containerId] = chart; }
+        function renderOverviewPage(employeeData, categoryData, fixedMonthlySales) { const kpiContainer = document.getElementById('kpi-container-overview'); if (!kpiContainer) return; const totalSales = employeeData.reduce((s, d) => s + d.totalSales, 0); const totalOrders = employeeData.reduce((s, d) => s + d.orderCount, 0); const avgOrderValue = totalSales / totalOrders || 0; const totalConnectedCalls = employeeData.reduce((s, d) => s + d.connectedCalls, 0); kpiContainer.innerHTML = `<article class="kpi-card"><h3>ยอดขายรวม (ตามฟิลเตอร์)</h3><p>${formatCurrency(totalSales)}</p></article><article class="kpi-card"><h3>ออเดอร์ทั้งหมด</h3><p>${formatNumber(totalOrders)}</p></article><article class="kpi-card"><h3>ยอดขายเฉลี่ย/ออเดอร์</h3><p>${formatCurrency(avgOrderValue)}</p></article><article class="kpi-card"><h3>สายที่ได้คุย (รวม)</h3><p>${formatNumber(totalConnectedCalls)}</p></article>`; const salesChartData = employeeData.filter(e => e.totalSales > 0).sort((a, b) => b.totalSales - a.totalSales).slice(0, 10); renderChart('sales-by-employee-chart', { series: [{ data: salesChartData.map(e => e.totalSales), name: 'ยอดขาย' }], chart: { type: 'bar', height: 350 }, plotOptions: { bar: { horizontal: true } }, xaxis: { categories: salesChartData.map(e => e.employeeInfo.name) }, tooltip: { y: { formatter: val => formatCurrency(val) } } }); const categoryChartDataFiltered = categoryData && categoryData.slice(1).map(row => ({ x: row[0], y: row[1] })).filter(d => d.y > 0); renderChart('sales-by-category-chart', { series: categoryChartDataFiltered.map(d => d.y), chart: { type: 'donut', height: 350 }, labels: categoryChartDataFiltered.map(d => d.x), legend: { position: 'bottom' } }); renderMonthlySalesGrowthChart(fixedMonthlySales); }
+        function renderMonthlySalesGrowthChart(monthlySales) { const growthRates = monthlySales.map((sale, i, arr) => { if (i === 0 || arr[i - 1] === 0) return 0; return ((sale - arr[i - 1]) / arr[i - 1]) * 100; }); const isDark = document.body.classList.contains('dark-theme'); const chartOptions = { series: [{ name: 'ยอดขาย', type: 'column', data: monthlySales }, { name: 'อัตราการเติบโต', type: 'line', data: growthRates }], chart: { type: 'line', height: 350 }, stroke: { width: [0, 4], curve: 'smooth' }, title: { text: '' }, dataLabels: { enabled: true, enabledOnSeries: [1], formatter: (val) => val.toFixed(1) + '%', style: { colors: [isDark ? '#fff' : '#333'] }, background: { enabled: true, foreColor: isDark ? '#333' : '#fff', borderRadius: 2, opacity: 0.6 } }, xaxis: { categories: thaiMonths }, yaxis: [{ seriesName: 'ยอดขาย', title: { text: "ยอดขาย (บาท)" }, labels: { formatter: (val) => formatCurrency(val) } }, { seriesName: 'อัตราการเติบโต', opposite: true, title: { text: "อัตราการเติบโต (%)" }, labels: { formatter: (val) => val.toFixed(0) + '%' } }] }; renderChart('monthly-sales-growth-chart', chartOptions); }
+        function renderTeamPage(kpi, topTeamName, teamsData, teamRankMap, employeeData) {
+            const gridContainer = document.getElementById('team-grid-container');
+            if (!gridContainer) return;
+            gridContainer.innerHTML = '';
+            const kpiContainer = document.getElementById('kpi-container-team');
+            if (currentUser && currentUser.team === 'All') {
+                if (kpiContainer) kpiContainer.innerHTML = `<article class="kpi-card"><h3>ทีมขายดีที่สุด (ตามฟิลเตอร์)</h3><p>${topTeamName || 'N/A'}</p></article><article class="kpi-card"><h3>พนักงานขายดีที่สุด (All Time)</h3><p>${kpi.topEmployeeName || 'N/A'}</p></article>`;
+                Object.keys(teamsData).sort((a, b) => (teamRankMap.get(a) || 99) - (teamRankMap.get(b) || 99)).forEach(teamName => {
+                    const members = teamsData[teamName];
+                    if (!members || members.length === 0) return;
+                    const isTopTeam = teamName === topTeamName;
+                    const rank = teamRankMap.get(teamName);
+                    const teamCardClass = isTopTeam ? 'team-card top-team-card' : 'team-card';
+                    const rankDisplay = rank ? `#${rank}` : '';
+                    const trophyIcon = isTopTeam ? '<i class="fa-solid fa-trophy"></i>' : '';
+                    let teamCardHTML = `<div class="${teamCardClass}"><h2>${rankDisplay} ${teamName} ${trophyIcon}</h2>`;
+                    teamCardHTML += `<div class="table-container" style="max-height: none;"><table><thead><tr><th>รายชื่อ</th><th>ยอดขาย (ชีวภัณฑ์)</th><th>ยอดขาย (ปุ๋ย)</th><th>ยอดขายรวม</th><th>วันทำงาน</th><th>นาทีที่โทร</th><th>เฉลี่ย/วัน (นาที)</th><th>อัตราโทรสำเร็จ</th><th>อัตราสร้างออเดอร์</th></tr></thead><tbody>`;
+                    members.sort((a, b) => {
+                        if (a.employeeInfo.position === 'supervisor') return -1;
+                        if (b.employeeInfo.position === 'supervisor') return 1;
+                        return b.totalSales - a.totalSales;
+                    }).forEach(member => {
+                        const empData = employeeData.find(e => e.employeeInfo.id === member.employeeInfo.id);
+                        if (!empData) return;
+                        const avgCallPerDay = empData.workDays > 0 ? empData.callDurationMin / empData.workDays : 0;
+                        const connectionRate = empData.totalCalls > 0 ? (empData.connectedCalls / empData.totalCalls) * 100 : 0;
+                        const orderGenRate = empData.connectedCalls > 0 ? (empData.orderCount / empData.connectedCalls) * 100 : 0;
+                        const teamTopIcon = (member.isTeamTopPerformer && member.employeeInfo.position !== 'supervisor') ? '<i class="fa-solid fa-crown" title="ยอดขายสูงสุดในทีม (สะสม)"></i>' : '';
+                        const overallTopIcon = (member.employeeInfo.id === kpi.topEmployeeId) ? '<i class="fa-solid fa-star" title="ยอดขายสูงสุดตลอดกาล"></i>' : '';
+                        const monthlyTopIcon = empData.isTopPerformerOfTheMonth ? '<i class="fa-solid fa-star" style="color: var(--green-text);" title="ยอดขายสูงสุดประจำเดือนล่าสุด (ตามฟิลเตอร์)"></i>' : '';
+                        teamCardHTML += `<tr><td style="text-align: left;">${empData.employeeInfo.name} ${teamTopIcon}${overallTopIcon}${monthlyTopIcon}</td><td>${formatCurrency(empData.bioSales)}</td><td>${formatCurrency(empData.fertilizerSales)}</td><td>${formatCurrency(empData.totalSales)}</td><td>${formatNumber(empData.workDays)}</td><td>${formatMinutes(empData.callDurationMin)}</td><td>${formatMinutes(avgCallPerDay)}</td><td>${connectionRate.toFixed(1)}%</td><td>${orderGenRate.toFixed(1)}%</td></tr>`;
+                    });
+                    teamCardHTML += `</tbody></table></div></div>`;
+                    gridContainer.innerHTML += teamCardHTML;
+                });
+            } else {
+                if (kpiContainer) kpiContainer.innerHTML = '';
+                const teamName = Object.keys(teamsData)[0];
+                if (!teamName) { gridContainer.innerHTML = '<p>ไม่พบข้อมูลทีม</p>'; return; }
+                const members = teamsData[teamName];
+                let tableHTML = `<div class="chart-card"><div class="table-container"><h2>สรุปประสิทธิภาพ ${teamName}</h2><table><thead><tr><th>รายชื่อ</th><th>ยอดขาย (ชีวภัณฑ์)</th><th>ยอดขาย (ปุ๋ย)</th><th>ยอดขายรวม</th><th>วันทำงาน</th><th>นาทีที่โทร</th><th>เฉลี่ย/วัน (นาที)</th><th>อัตราโทรสำเร็จ</th><th>อัตราสร้างออเดอร์</th></tr></thead><tbody>`;
+                members.sort((a, b) => {
+                    if (a.employeeInfo.position === 'supervisor') return -1;
+                    if (b.employeeInfo.position === 'supervisor') return 1;
+                    return b.totalSales - a.totalSales;
+                }).forEach(member => {
+                    const empData = employeeData.find(e => e.employeeInfo.id === member.employeeInfo.id);
+                    if (!empData) return;
+                    const monthlyTopIcon = empData.isTopPerformerOfTheMonth ? '<i class="fa-solid fa-star" style="color: var(--green-text);" title="ยอดขายสูงสุดประจำเดือนล่าสุด (ตามฟิลเตอร์)"></i>' : '';
+                    const avgCallPerDay = empData.workDays > 0 ? empData.callDurationMin / empData.workDays : 0;
+                    const connectionRate = empData.totalCalls > 0 ? (empData.connectedCalls / empData.totalCalls) * 100 : 0;
+                    const orderGenRate = empData.connectedCalls > 0 ? (empData.orderCount / empData.connectedCalls) * 100 : 0;
+                    tableHTML += `<tr><td style="text-align: left;">${empData.employeeInfo.name} ${monthlyTopIcon}</td><td>${formatCurrency(empData.bioSales)}</td><td>${formatCurrency(empData.fertilizerSales)}</td><td>${formatCurrency(empData.totalSales)}</td><td>${formatNumber(empData.workDays)}</td><td>${formatMinutes(empData.callDurationMin)}</td><td>${formatMinutes(avgCallPerDay)}</td><td>${connectionRate.toFixed(1)}%</td><td>${orderGenRate.toFixed(1)}%</td></tr>`;
+                });
+                tableHTML += '</tbody></table></div></div>';
+                gridContainer.innerHTML = tableHTML;
+            }
+        }
+        function renderProductPage(aggregatedProducts, unfilteredProductData, customerTypeData, viewType) {
+            const chartHeight = 280;
+            const isDark = document.body.classList.contains('dark-theme');
+            const dataLabelColor = isDark ? "#fff" : "#333";
+            const top5ByValue = [...aggregatedProducts].sort((a, b) => b.totalSales - a.totalSales).slice(0, 5);
+            renderChart('top-products-value-chart', { series: [{ data: top5ByValue.map(p => p.totalSales), name: 'ยอดขาย' }], chart: { type: 'bar', height: chartHeight }, plotOptions: { bar: { horizontal: false, dataLabels: { position: 'top' } } }, dataLabels: { enabled: true, formatter: (val) => formatNumber(val), offsetY: -20, style: { fontSize: '12px', colors: [dataLabelColor] } }, xaxis: { categories: top5ByValue.map(p => p.name) }, tooltip: { y: { formatter: val => formatCurrency(val) } } });
+            const top5ByQty = [...aggregatedProducts].sort((a, b) => b.totalQuantity - a.totalQuantity).slice(0, 5);
+            renderChart('top-products-qty-chart', { series: [{ data: top5ByQty.map(p => p.totalQuantity), name: 'จำนวน' }], chart: { type: 'bar', height: chartHeight }, plotOptions: { bar: { horizontal: false, dataLabels: { position: 'top' } } }, dataLabels: { enabled: true, formatter: (val) => formatNumber(val), offsetY: -20, style: { fontSize: '12px', colors: [dataLabelColor] } }, xaxis: { categories: top5ByQty.map(p => p.name) }, colors: ['var(--accent-color)'], tooltip: { y: { formatter: val => val.toLocaleString('th-TH') + ' ชิ้น' } } });
+            renderCustomerTypeTable(customerTypeData, chartHeight);
+            renderProductDetailTable(unfilteredProductData, viewType);
+        }
+        function renderCustomerTypeTable(data, height) { const container = document.getElementById('customer-type-table-container'); if (!container) return; let tableHTML = `<div class="table-container" style="max-height:${height}px;"><table> <thead><tr><th rowspan="2" style="vertical-align: middle;">ประเภทสินค้า</th><th colspan="2">ลูกค้าใหม่</th><th colspan="2">รีออเดอร์</th></tr> <tr><th>ยอดขาย</th><th>จำนวน</th><th>ยอดขาย</th><th>จำนวน</th></tr></thead><tbody>`; let totals = { newSales: 0, newQty: 0, reorderSales: 0, reorderQty: 0 }; for (const prodCat in data) { const catData = data[prodCat]; totals.newSales += catData['ลูกค้าใหม่'].sales; totals.newQty += catData['ลูกค้าใหม่'].quantity; totals.reorderSales += catData['รีออเดอร์'].sales; totals.reorderQty += catData['รีออเดอร์'].quantity; tableHTML += `<tr><td>${prodCat}</td> <td>${formatCurrency(catData['ลูกค้าใหม่'].sales)}</td> <td>${formatNumber(catData['ลูกค้าใหม่'].quantity)}</td> <td>${formatCurrency(catData['รีออเดอร์'].sales)}</td> <td>${formatNumber(catData['รีออเดอร์'].quantity)}</td> </tr>`; } tableHTML += `</tbody><tfoot><tr><td>ยอดรวม</td> <td>${formatCurrency(totals.newSales)}</td> <td>${formatNumber(totals.newQty)}</td> <td>${formatCurrency(totals.reorderSales)}</td> <td>${formatNumber(totals.reorderQty)}</td> </tr></tfoot></table></div>`; container.innerHTML = tableHTML; }
+        function renderProductDetailTable(products, viewType) { const container = document.getElementById('product-table-container'); if (!container) return; const isSalesView = viewType === 'sales'; let tableHTML = `<table><thead><tr><th>ชื่อสินค้า</th><th>รวม (ตามฟิลเตอร์)</th>${thaiMonths.map(m => `<th>${m}</th>`).join('')}</tr></thead><tbody>`; if (products) { products.sort((a, b) => b.totalSales - a.totalSales).forEach(p => { const monthlyData = isSalesView ? p.monthlySales : p.monthlyQuantity; const totalData = monthlyData.reduce((a, b) => a + b, 0); const formatter = isSalesView ? formatCurrency : (val) => formatNumber(val); tableHTML += `<tr><td>${p.name}</td><td>${formatter(totalData)}</td>${monthlyData.map(val => `<td>${val > 0 ? formatter(val) : '-'}</td>`).join('')}</tr>`; }); } tableHTML += `</tbody></table>`; container.innerHTML = tableHTML; }
+        function renderLowCallTimeReport() { if (!finalEmployeeData) return; const targetAvgMinutesPerDay = 100; const employeesWithAvg = finalEmployeeData.map(emp => { const avgCallPerDay = emp.workDays > 0 ? emp.callDurationMin / emp.workDays : 0; return { ...emp, avgCallPerDay: avgCallPerDay }; }); const reportData = employeesWithAvg.filter(emp => emp.avgCallPerDay < targetAvgMinutesPerDay && emp.workDays > 0).sort((a, b) => a.avgCallPerDay - b.avgCallPerDay); const tableBody = document.getElementById('low-call-time-table-body'); tableBody.innerHTML = ''; if (reportData.length === 0) { tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 20px;">ไม่มีพนักงานที่โทรเฉลี่ยต่อวันน้อยกว่า ${targetAvgMinutesPerDay} นาทีในช่วงเวลานี้</td></tr>`; return; } reportData.forEach((emp, index) => { const row = `<tr><td>${index + 1}</td><td style="text-align: left;">${emp.employeeInfo.name}</td><td>${formatNumber(emp.workDays)}</td><td>${formatMinutes(emp.callDurationMin)}</td><td>${formatMinutes(emp.avgCallPerDay)}</td><td>${formatCurrency(emp.totalSales)}</td></tr>`; tableBody.innerHTML += row; }); }
+        function renderCallAnalysisPage(employeeData) { const teamFilter = document.getElementById('team-call-filter'); const contentEl = document.getElementById('call-analysis-content'); const promptEl = document.getElementById('call-analysis-prompt'); if (!teamFilter || !contentEl || !promptEl || !preAggregatedData) return; const selectedTeam = teamFilter.value; if (!selectedTeam) { contentEl.style.display = 'none'; promptEl.style.display = 'block'; return; } contentEl.style.display = 'block'; promptEl.style.display = 'none'; const teamMembers = preAggregatedData.teamsData[selectedTeam] || []; const memberIds = new Set(teamMembers.map(m => m.employeeInfo.id)); const filteredEmployeeData = employeeData.filter(emp => memberIds.has(emp.employeeInfo.id)); const tableContainer = document.getElementById('call-status-table-container'); if (tableContainer) { let callStatusData = filteredEmployeeData.map(emp => { const avgCallPerDay = emp.workDays > 0 ? emp.callDurationMin / emp.workDays : 0; return { name: emp.employeeInfo.name, position: emp.employeeInfo.position, phone: emp.employeeInfo.phone, totalCalls: emp.totalCalls, connectedCalls: emp.connectedCalls, durationMinutes: emp.callDurationMin, avgCallPerDay: avgCallPerDay }; }); callStatusData.sort((a, b) => { if (a.position === 'supervisor' && b.position !== 'supervisor') return -1; if (a.position !== 'supervisor' && b.position === 'supervisor') return 1; return b.durationMinutes - a.durationMinutes; }); let tableHTML = '<table><thead><tr><th>รายชื่อ</th><th>ตำแหน่ง</th><th>เบอร์</th><th>สายโทรทั้งหมด</th><th>สายที่ได้คุย</th><th>เวลาโทร (นาที)</th><th>เวลาโทร (HH:MM:SS)</th><th>เฉลี่ย/วัน (นาที)</th></tr></thead><tbody>'; callStatusData.forEach(data => { tableHTML += `<tr> <td>${data.name}</td> <td>${data.position}</td> <td>${data.phone}</td> <td>${formatNumber(data.totalCalls)}</td> <td>${formatNumber(data.connectedCalls)}</td> <td>${formatMinutes(data.durationMinutes)}</td> <td>${minutesToHHMMSS(data.durationMinutes)}</td><td>${formatMinutes(data.avgCallPerDay)}</td></tr>`; }); tableHTML += '</tbody></table>'; tableContainer.innerHTML = tableHTML; } const weeklyContainer = document.getElementById('call-weekly-timeline-container'); if (weeklyContainer) { let weeklyCallData = filteredEmployeeData.map(emp => { let weeklyMinutes = Array(4).fill(0); const selectedYears = getSelectedYears(); const selectedMonths = getSelectedMonths(); selectedYears.forEach(year => { if (emp.callStatusMetrics?.[year]) { const metrics = emp.callStatusMetrics[year]; selectedMonths.forEach(m_idx => { if (metrics.weeklyDuration?.[m_idx]) { metrics.weeklyDuration[m_idx].forEach((weeklyDur, w_idx) => { weeklyMinutes[w_idx] += weeklyDur || 0; }); } }); } }); return { name: emp.employeeInfo.name, position: emp.employeeInfo.position, weeklyMinutes }; }); weeklyCallData.sort((a, b) => { if (a.position === 'supervisor' && b.position !== 'supervisor') return -1; if (a.position !== 'supervisor' && b.position === 'supervisor') return 1; const totalMinutesA = a.weeklyMinutes.reduce((sum, current) => sum + current, 0); const totalMinutesB = b.weeklyMinutes.reduce((sum, current) => sum + current, 0); return totalMinutesB - totalMinutesA; }); let weeklyTableHTML = `<table><thead> <tr> <th>รายชื่อ</th> <th>สัปดาห์ 1 (1-7)</th> <th>สัปดาห์ 2 (8-14)</th> <th>ความคืบหน้า</th> <th>สัปดาห์ 3 (15-22)</th> <th>ความคืบหน้า</th> <th>สัปดาห์ 4 (23+)</th> <th>ความคืบหน้า</th> </tr> </thead><tbody>`; weeklyCallData.forEach(data => { weeklyTableHTML += '<tr>'; weeklyTableHTML += `<td>${data.name}</td>`; let prevWeekMinutes = 0; data.weeklyMinutes.forEach((minutes, index) => { weeklyTableHTML += `<td>${formatMinutes(minutes)}</td>`; if (index > 0) { let progressHTML = '-'; if (prevWeekMinutes > 0) { const change = ((minutes - prevWeekMinutes) / prevWeekMinutes) * 100; const progressClass = change >= 0 ? 'progress-up' : 'progress-down'; const icon = change >= 0 ? '<i class="fa-solid fa-arrow-up"></i>' : '<i class="fa-solid fa-arrow-down"></i>'; progressHTML = `<span class="${progressClass}">${icon} ${change.toFixed(1)}%</span>`; } else if (minutes > 0) { progressHTML = `<span class="progress-up"><i class="fa-solid fa-arrow-up"></i> NEW</span>`; } weeklyTableHTML += `<td>${progressHTML}</td>`; } prevWeekMinutes = minutes; }); weeklyTableHTML += '</tr>'; }); weeklyTableHTML += '</tbody></table>'; weeklyContainer.innerHTML = weeklyTableHTML; } renderDailyCallTable(getSelectedYears(), getSelectedMonths()); }
+        function renderDailyCallTable(selectedYears, selectedMonths) { const container = document.getElementById('daily-call-table-container'); const selectedTeam = document.getElementById('team-call-filter').value; if (!container || !selectedTeam || !preAggregatedData.dailyCallMetricsByEmployee) { container.innerHTML = "<p>ไม่มีข้อมูล</p>"; return; } const now = new Date(); const todayString = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().split('T')[0]; const membersInTeam = preAggregatedData.teamsData[selectedTeam] ? [...preAggregatedData.teamsData[selectedTeam]].sort((a, b) => { if (a.employeeInfo.position === 'supervisor') return -1; if (b.employeeInfo.position === 'supervisor') return 1; return a.employeeInfo.name.localeCompare(b.employeeInfo.name); }) : []; if (membersInTeam.length === 0) { container.innerHTML = "<p>ไม่พบสมาชิกในทีมที่เลือก</p>"; return; } const pivotedData = {}; const totalsByEmployee = {}; membersInTeam.forEach(member => { const empId = member.employeeInfo.id; totalsByEmployee[empId] = { totalCalls: 0, connectedCalls: 0, durationMinutes: 0 }; const employeeCallData = preAggregatedData.dailyCallMetricsByEmployee[empId]; if (employeeCallData) { for (const dateString in employeeCallData) { const date = new Date(dateString); if (selectedYears.includes(date.getUTCFullYear()) && selectedMonths.includes(date.getUTCMonth())) { if (!pivotedData[dateString]) pivotedData[dateString] = {}; const metrics = employeeCallData[dateString]; pivotedData[dateString][empId] = metrics; totalsByEmployee[empId].totalCalls += metrics.totalCalls; totalsByEmployee[empId].connectedCalls += metrics.connectedCalls; totalsByEmployee[empId].durationMinutes += metrics.durationMinutes; } } } }); const sortedDates = Object.keys(pivotedData).sort(); if (sortedDates.length === 0) { container.innerHTML = "<p>ไม่มีข้อมูลการโทรในช่วงเวลาที่เลือกสำหรับทีมนี้</p>"; return; } let tableHTML = '<table class="pivot-table">'; tableHTML += '<thead><tr><th rowspan="2">วันที่</th>'; membersInTeam.forEach((member, index) => { const thClass = (index > 0) ? 'employee-group-start' : ''; tableHTML += `<th colspan="4" class="${thClass}">${member.employeeInfo.name}</th>`; }); tableHTML += '</tr><tr>'; const subHeaders = ['โทรทั้งหมด', 'ได้คุย', 'เวลา (นาที)', 'เวลา (HH:MM)']; membersInTeam.forEach((member, index) => { const thClass = (index > 0) ? 'employee-group-start' : ''; const altClass = index % 2 === 1 ? 'employee-group-alt' : ''; const combinedClasses = `${thClass} ${altClass}`.trim(); tableHTML += `<th class="${combinedClasses}">${subHeaders[0]}</th>`; tableHTML += `<th class="${altClass}">${subHeaders[1]}</th><th class="${altClass}">${subHeaders[2]}</th><th class="${altClass}">${subHeaders[3]}</th>`; }); tableHTML += '</tr></thead>'; tableHTML += '<tbody>'; sortedDates.forEach(dateString => { const rowClass = dateString === todayString ? 'today-highlight' : ''; tableHTML += `<tr class="${rowClass}"><td>${formatDateToDDMMYYYY(dateString)}</td>`; membersInTeam.forEach((member, index) => { const empId = member.employeeInfo.id; const metrics = pivotedData[dateString][empId]; const tdClass = index > 0 ? 'employee-group-start' : ''; const altClass = index % 2 === 1 ? 'employee-group-alt' : ''; const combinedClasses = `${tdClass} ${altClass}`.trim(); if (metrics) { tableHTML += `<td class="${combinedClasses}">${formatNumber(metrics.totalCalls)}</td>`; tableHTML += `<td class="${altClass}">${formatNumber(metrics.connectedCalls)}</td>`; tableHTML += `<td class="${altClass}">${formatMinutes(metrics.durationMinutes)}</td>`; tableHTML += `<td class="${altClass}">${minutesToHHMMSS(metrics.durationMinutes)}</td>`; } else { tableHTML += `<td class="${combinedClasses}">-</td><td class="${altClass}">-</td><td class="${altClass}">-</td><td class="${altClass}">-</td>`; } }); tableHTML += '</tr>'; }); tableHTML += '</tbody>'; tableHTML += '<tfoot><tr><td><strong>ยอดรวม</strong></td>'; membersInTeam.forEach((member, index) => { const totals = totalsByEmployee[member.employeeInfo.id]; const tdClass = index > 0 ? 'employee-group-start' : ''; const altClass = index % 2 === 1 ? 'employee-group-alt' : ''; const combinedClasses = `${tdClass} ${altClass}`.trim(); tableHTML += `<td class="${combinedClasses}"><strong>${formatNumber(totals.totalCalls)}</strong></td>`; tableHTML += `<td class="${altClass}"><strong>${formatNumber(totals.connectedCalls)}</strong></td>`; tableHTML += `<td class="${altClass}"><strong>${formatMinutes(totals.durationMinutes)}</strong></td>`; tableHTML += `<td class="${altClass}"><strong>${minutesToHHMMSS(totals.durationMinutes)}</strong></td>`; }); tableHTML += '</tr></tfoot>'; tableHTML += '</table>'; container.innerHTML = tableHTML; }
+        function renderEmployeeDetailPage() {
+            if (charts['employee-sales-by-cat-chart']) charts['employee-sales-by-cat-chart'].destroy();
+            if (charts['employee-monthly-sales-chart']) charts['employee-monthly-sales-chart'].destroy();
+            const selectEl = document.getElementById('detail-employee-filter');
+            const contentEl = document.getElementById('employee-detail-content');
+            const promptEl = document.getElementById('employee-detail-prompt');
+            if (!selectEl || !contentEl || !promptEl || !preAggregatedData) return;
+            const selectedEmpId = parseInt(selectEl.value);
+            if (!selectedEmpId) { contentEl.style.display = 'none'; promptEl.style.display = 'block'; return; }
+            contentEl.style.display = 'block'; promptEl.style.display = 'none';
+            const empData = finalEmployeeData.find(e => e.employeeInfo.id === selectedEmpId);
+            const detailData = preAggregatedData.detailedEmployeeMetrics[selectedEmpId];
+            const kpiContainer = document.getElementById('employee-kpi-container');
+            kpiContainer.innerHTML = `<article class="kpi-card"><h3>ยอดขาย (ตามฟิลเตอร์)</h3><p>${formatCurrency(empData.totalSales)}</p></article><article class="kpi-card"><h3>ออเดอร์ (ตามฟิลเตอร์)</h3><p>${formatNumber(empData.orderCount)}</p></article><article class="kpi-card"><h3>เฉลี่ยต่อออเดอร์</h3><p>${formatCurrency(empData.orderCount > 0 ? empData.totalSales / empData.orderCount : 0)}</p></article><article class="kpi-card"><h3>สายที่ได้คุย (ตามฟิลเตอร์)</h3><p>${formatNumber(empData.connectedCalls)}</p></article>`;
+            const salesTableContainer = document.getElementById('employee-sales-summary-table');
+            const avgBio = empData.bioOrderCount > 0 ? empData.bioSales / empData.bioOrderCount : 0;
+            const avgFertLarge = empData.fertLargeOrderCount > 0 ? empData.fertLargeSales / empData.fertLargeOrderCount : 0;
+            const avgFertSmall = empData.fertSmallOrderCount > 0 ? empData.fertSmallSales / empData.fertSmallOrderCount : 0;
+            const avgTotal = empData.orderCount > 0 ? empData.totalSales / empData.orderCount : 0;
+            salesTableContainer.innerHTML = `<table class="summary-table">
+            <thead><tr><th>ประเภท</th><th>ยอดขาย</th><th>จำนวนออเดอร์</th><th>เฉลี่ยต่อออเดอร์</th></tr></thead>
+            <tbody>
+                <tr><td>ชีวภัณฑ์</td><td>${formatCurrency(empData.bioSales)}</td><td>${formatNumber(empData.bioOrderCount)}</td><td>${formatCurrency(avgBio)}</td></tr>
+                <tr><td>ปุ๋ยกระสอบใหญ่</td><td>${formatCurrency(empData.fertLargeSales)}</td><td>${formatNumber(empData.fertLargeOrderCount)}</td><td>${formatCurrency(avgFertLarge)}</td></tr>
+                <tr><td>ปุ๋ยกระสอบเล็ก</td><td>${formatCurrency(empData.fertSmallSales)}</td><td>${formatNumber(empData.fertSmallOrderCount)}</td><td>${formatCurrency(avgFertSmall)}</td></tr>
+            </tbody>
+            <tfoot><tr><td><strong>รวม</strong></td><td><strong>${formatCurrency(empData.totalSales)}</strong></td><td><strong>${formatNumber(empData.orderCount)}</strong></td><td><strong>${formatCurrency(avgTotal)}</strong></td></tr></tfoot>
+        </table>`;
+            const workCallTableContainer = document.getElementById('employee-work-call-summary-table');
+            const orderGenRate = empData.connectedCalls > 0 ? (empData.orderCount / empData.connectedCalls) * 100 : 0;
+            const connectionRate = empData.totalCalls > 0 ? (empData.connectedCalls / empData.totalCalls) * 100 : 0;
+            const callTimePerDay = empData.workDays > 0 ? empData.callDurationMin / empData.workDays : 0;
+            workCallTableContainer.innerHTML = `<table class="summary-table"><tbody><tr><td>วันทำงาน (ตามฟิลเตอร์)</td><td>${formatNumber(empData.workDays)} วัน</td></tr><tr><td>เวลามาสาย (ตามฟิลเตอร์)</td><td>${formatNumber(empData.lateMinutes)} นาที</td></tr><tr><td>นาทีที่โทร (ตามฟิลเตอร์)</td><td>${formatMinutes(empData.callDurationMin)} นาที (${minutesToHHMMSS(empData.callDurationMin)})</td></tr><tr><td>เวลาโทร/วัน (นาที)</td><td>${formatMinutes(callTimePerDay)}</td></tr><tr><td>อัตราการโทรสำเร็จ (Connection)</td><td>${connectionRate.toFixed(1)} %</td></tr><tr><td>อัตราการสร้างออเดอร์</td><td>${orderGenRate.toFixed(1)} %</td></tr></tbody></table>`;
+            const catData = detailData.salesByProductCategory;
+            renderChart('employee-sales-by-cat-chart', { series: Object.values(catData), labels: Object.keys(catData), chart: { type: 'pie', height: 320 }, legend: { position: 'bottom' } });
+            const topProducts = Object.entries(detailData.salesByProductName).map(([name, sales]) => ({ name, sales })).sort((a, b) => b.sales - a.sales).slice(0, 5);
+            let topProductsTable = '<table><thead><tr><th>สินค้า</th><th style="text-align:right;">ยอดขายรวม</th></tr></thead><tbody>'; topProducts.forEach(p => { topProductsTable += `<tr><td>${p.name}</td><td style="text-align: right;">${formatCurrency(p.sales)}</td></tr>`; }); topProductsTable += '</tbody></table>';
+            document.getElementById('employee-top-products-table').innerHTML = topProductsTable;
+            const monthlyData = detailData.monthlySalesByCategory;
+            const yearsWithData = Object.keys(monthlyData);
+            if (yearsWithData.length > 0) {
+                const latestYear = Math.max(...yearsWithData.map(y => parseInt(y)));
+                const yearData = monthlyData[latestYear];
+                const categories = Object.keys(yearData || {});
+                const totalSalesLine = new Array(12).fill(0);
+                const monthlySeries = categories.map(cat => { const catData = (yearData && yearData[cat]) ? yearData[cat] : new Array(12).fill(0); catData.forEach((val, i) => totalSalesLine[i] += val); return { name: cat, type: 'column', data: catData }; });
+                monthlySeries.push({ name: 'ยอดรวม', type: 'line', data: totalSalesLine });
+                renderChart('employee-monthly-sales-chart', { series: monthlySeries, chart: { type: 'line', height: 350, stacked: true }, stroke: { width: [0, 0, 4], curve: 'smooth' }, plotOptions: { bar: { columnWidth: '50%' } }, title: { text: `ภาพรวมรายเดือน ปี ${latestYear}`, align: 'left' }, xaxis: { categories: thaiMonths }, yaxis: { title: { text: 'ยอดขาย (บาท)' }, labels: { formatter: val => formatCurrency(val) } }, tooltip: { y: { formatter: val => formatCurrency(val) } } });
+            } else {
+                document.getElementById('employee-monthly-sales-chart').innerHTML = '<p style="text-align:center; padding: 20px;">ไม่มีข้อมูลยอดขายรายเดือน</p>';
+            }
+        }
+
+        function renderCheckInPage() {
+            const container = document.getElementById('check-in-list');
+            if (!container || !currentUser || currentUser.team === 'All' || !preAggregatedData) return;
+
+            const dateEl = document.getElementById('check-in-date');
+            const today = new Date();
+            if (dateEl) dateEl.textContent = today.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
+
+            const members = preAggregatedData.employeeData.map(m => m.employeeInfo);
+
+            container.innerHTML = '';
+            if (members.length === 0) {
+                container.innerHTML = '<p>ไม่พบสมาชิกในทีมของคุณ</p>';
+                return;
+            }
+
+            const checkedInTodaySet = new Set((preAggregatedData.checkedInToday || []).map(String));
+            let hasUncheckedEmployees = false;
+
+            members.forEach(member => {
+                const empIdStr = String(member.id);
+                const isCheckedIn = checkedInTodaySet.has(empIdStr);
+                const checkedInIcon = isCheckedIn ? '<i class="fa-solid fa-circle-check" style="color: var(--green-text); margin-left: 0.75rem;" title="เช็คชื่อแล้วสำหรับวันนี้"></i>' : '';
+
+                if (!isCheckedIn) {
+                    hasUncheckedEmployees = true;
+                }
+
+                const itemHTML = `<div class="check-in-item"><input type="checkbox" id="check-in-${empIdStr}" value="${empIdStr}" ${isCheckedIn ? 'disabled' : ''}><label for="check-in-${empIdStr}">${member.name}</label>${checkedInIcon}</div>`;
+                container.innerHTML += itemHTML;
+            });
+
+            const submitBtn = document.getElementById('check-in-submit-btn');
+            if (submitBtn) {
+                if (hasUncheckedEmployees) {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'บันทึกการเช็คชื่อ';
+                } else {
+                    submitBtn.disabled = true;
+                    submitBtn.textContent = 'บันทึกเรียบร้อยแล้ว';
+                }
+            }
+        }
+
+        // ✅ NEW: แก้ไขฟังก์ชันวาดกราฟยอดขายรายวันทั้งหมด
+        function renderDailySalesChart() {
+            const container = document.getElementById('daily-sales-chart-card');
+            if (!container || !preAggregatedData?.dailySalesMetricsByEmployee) return;
+
+            const currentFilterElement = document.getElementById('daily-sales-team-filter');
+            const previouslySelectedTeam = currentFilterElement ? currentFilterElement.value : 'All';
+
+            container.innerHTML = '';
+
+            const selectedYears = getSelectedYears();
+            const selectedMonths = getSelectedMonths();
+            const isDark = document.body.classList.contains('dark-theme');
+
+            let title = 'ยอดขายรายวัน';
+            let controlsHtml = '';
+
+            if (currentUser.team === 'All') {
+                const teams = Object.keys(preAggregatedData.teamsData).sort();
+                let optionsHtml = '<option value="All">ทุกทีม</option>';
+                teams.forEach(team => {
+                    const isSelected = team === previouslySelectedTeam ? 'selected' : '';
+                    optionsHtml += `<option value="${team}" ${isSelected}>${team}</option>`;
+                });
+                controlsHtml = `<div style="margin-bottom: 1rem; max-width: 250px;"><label for="daily-sales-team-filter">กรองตามทีม:</label><select id="daily-sales-team-filter" class="page-filter-select">${optionsHtml}</select></div>`;
+            }
+
+            container.innerHTML = `<h3>${title}</h3><div id="daily-sales-controls">${controlsHtml}</div><div id="daily-sales-chart"></div>`;
+
+            if (currentUser.team === 'All') {
+                document.getElementById('daily-sales-team-filter')?.addEventListener('change', renderDailySalesChart);
+            }
+
+            const series = [];
+            const selectedTeam = previouslySelectedTeam;
+
+            if (currentUser.team === 'All') {
+                let includedEmpIds = new Set();
+                const dailyData = {};
+
+                if (selectedTeam === 'All') {
+                    includedEmpIds = new Set(Object.keys(preAggregatedData.dailySalesMetricsByEmployee));
+                } else {
+                    const members = preAggregatedData.teamsData[selectedTeam] || [];
+                    includedEmpIds = new Set(members.map(m => m.employeeInfo.id));
+                }
+
+                for (const empId of includedEmpIds) {
+                    const empSales = preAggregatedData.dailySalesMetricsByEmployee[empId] || {};
+                    for (const dateStr in empSales) {
+                        const date = new Date(dateStr);
+                        if (selectedYears.includes(date.getFullYear()) && selectedMonths.includes(date.getMonth())) {
+                            dailyData[dateStr] = (dailyData[dateStr] || 0) + empSales[dateStr];
+                        }
+                    }
+                }
+
+                let chartData = Object.entries(dailyData).map(([date, sales]) => ({ x: date, y: sales }));
+                chartData.sort((a, b) => new Date(a.x) - new Date(b.x));
+
+                series.push({ name: selectedTeam === 'All' ? 'ยอดขายรวม' : selectedTeam, data: chartData });
+
+            } else {
+                const teamMembers = preAggregatedData.employeeData.map(e => e.employeeInfo);
+                teamMembers.forEach(member => {
+                    const empSales = preAggregatedData.dailySalesMetricsByEmployee[member.id] || {};
+                    const chartData = [];
+                    for (const dateStr in empSales) {
+                        const date = new Date(dateStr);
+                        if (selectedYears.includes(date.getFullYear()) && selectedMonths.includes(date.getMonth())) {
+                            chartData.push({ x: dateStr, y: empSales[dateStr] });
+                        }
+                    }
+                    chartData.sort((a, b) => new Date(a.x) - new Date(b.x));
+                    if (chartData.length > 0) { // เพิ่มเฉพาะคนที่มีข้อมูล
+                        series.push({ name: member.name, data: chartData });
+                    }
+                });
+            }
+
+            renderChart('daily-sales-chart', {
+                series: series,
+                chart: { type: 'line', height: 350, zoom: { enabled: true } },
+                stroke: { curve: 'smooth', width: 2 },
+                markers: { size: 4 },
+                dataLabels: {
+                    enabled: true,
+                    formatter: (val) => formatNumberWithDecimals(val),
+                    offsetY: -10,
+                    style: {
+                        fontSize: '11px',
+                        colors: [isDark ? '#fff' : '#343a40']
+                    },
+                    background: {
+                        enabled: true,
+                        foreColor: isDark ? '#343a40' : '#fff',
+                        padding: 4,
+                        borderRadius: 2,
+                        borderWidth: 1,
+                        borderColor: 'var(--border-color)',
+                        opacity: 0.7
+                    }
+                },
+                xaxis: {
+                    type: 'datetime',
+                    labels: { datetimeUTC: false, format: 'dd MMM' },
+                    title: { text: 'วันที่' }
+                },
+                yaxis: {
+                    title: { text: 'ยอดขาย (บาท)' },
+                    labels: { formatter: val => formatCurrency(val) }
+                },
+                tooltip: {
+                    x: { format: 'dd MMMM yyyy' },
+                    y: { formatter: val => formatCurrency(val) }
+                }
+            });
+        }
+
+    </script>
+</body>
+
+</html>
