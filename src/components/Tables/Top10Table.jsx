@@ -1,24 +1,12 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState } from 'react';
 
 function Top10Table({ data, meta, cancellationTypes, onViewCancelledOrders, onViewReturnedOrders }) {
     const [showAll, setShowAll] = useState(false);
-    const [expandedRow, setExpandedRow] = useState(null);
-    const popupRef = useRef(null);
     const displayData = showAll ? data : data.slice(0, 10);
     const fmt = (val) => new Intl.NumberFormat('th-TH').format(val || 0);
 
     const daysInMonth = meta?.days_in_month || 31;
     const daysElapsed = meta?.days_elapsed || 1;
-
-    useEffect(() => {
-        const handleClick = (e) => {
-            if (popupRef.current && !popupRef.current.contains(e.target)) {
-                setExpandedRow(null);
-            }
-        };
-        if (expandedRow !== null) document.addEventListener('mousedown', handleClick);
-        return () => document.removeEventListener('mousedown', handleClick);
-    }, [expandedRow]);
 
     const calcTrend = (row) => {
         const curr = parseFloat(row.total_sales) || 0;
@@ -29,23 +17,20 @@ function Top10Table({ data, meta, cancellationTypes, onViewCancelledOrders, onVi
         return { growth: ((projected - prev) / prev) * 100 };
     };
 
-    const typeLabels = {};
-    (cancellationTypes || []).forEach(t => { typeLabels[t.id] = t.label; });
-
-    const getBreakdown = (row) => {
+    // Helper to extract amount for a specific cancellation type from cancelled_by_type
+    const getTypeAmount = (row, typeId) => {
         const byType = row.cancelled_by_type || {};
-        const items = [];
-        if (typeof byType === 'object') {
-            Object.entries(byType).forEach(([typeId, info]) => {
-                items.push({
-                    typeId: parseInt(typeId),
-                    label: typeLabels[typeId] || (parseInt(typeId) === 0 ? 'ไม่ระบุ' : `#${typeId}`),
-                    amount: info.amount,
-                    count: info.count,
-                });
-            });
+        if (typeof byType === 'object' && byType[typeId]) {
+            return { amount: byType[typeId].amount || 0, count: byType[typeId].count || 0 };
         }
-        return items;
+        return { amount: 0, count: 0 };
+    };
+
+    // Short labels for cancellation types
+    const cancelTypeShortLabels = {
+        1: 'ก่อนเข้าระบบ',
+        2: 'หลังเข้าระบบ',
+        3: 'ปฏิเสธรับของ',
     };
 
     const Tip = ({ text, position = 'center' }) => (
@@ -77,7 +62,7 @@ function Top10Table({ data, meta, cancellationTypes, onViewCancelledOrders, onVi
             </div>
 
             <div className="overflow-x-auto">
-                <table className="w-full text-left" style={{ minWidth: '1200px' }}>
+                <table className="w-full text-left" style={{ minWidth: '1350px' }}>
                     <thead className="relative z-[100]">
                         <tr className="text-[9px] font-bold uppercase tracking-wider border-b border-gray-200">
                             <th className="px-2 py-2.5 text-gray-400 w-8">#</th>
@@ -87,7 +72,9 @@ function Top10Table({ data, meta, cancellationTypes, onViewCancelledOrders, onVi
                             <th className="px-2 py-2.5 text-right text-gray-500">ยอดขาย<Tip text="ไม่รวมตีกลับ" /></th>
                             <th className="px-2 py-2.5 text-right text-orange-400">ตีกลับ<Tip text="Returned" /></th>
                             <th className="px-2 py-2.5 text-right text-blue-500">รวมตีกลับ<Tip text="ยอดขาย+ตีกลับ" /></th>
-                            <th className="px-2 py-2.5 text-right text-red-400">ยกเลิก<Tip text="คลิกเพื่อดูรายละเอียด" position="left" /></th>
+                            <th className="px-2 py-2.5 text-right text-red-400">ก่อนเข้า<Tip text="ยกเลิกก่อนเข้าระบบ" position="left" /></th>
+                            <th className="px-2 py-2.5 text-right text-red-500">หลังเข้า<Tip text="ยกเลิกหลังเข้าระบบ" position="left" /></th>
+                            <th className="px-2 py-2.5 text-right text-red-600">ปฏิเสธรับ<Tip text="ลูกค้าปฏิเสธการรับสินค้า" position="left" /></th>
                             {/* Product breakdown */}
                             <th className="px-2 py-2.5 text-right text-emerald-500 border-l border-gray-100">ปุ๋ย(฿)<Tip text="ยอดขายปุ๋ย" /></th>
                             <th className="px-1 py-2.5 text-center text-emerald-500">OD</th>
@@ -111,9 +98,11 @@ function Top10Table({ data, meta, cancellationTypes, onViewCancelledOrders, onVi
                             const cancelledAmt = parseFloat(row.cancelled_amount) || 0;
                             const trend = calcTrend(row);
                             const isPos = trend.growth >= 0;
-                            const isExpanded = expandedRow === index;
-                            const breakdown = getBreakdown(row);
-                            const popAbove = index >= displayData.length - 3;
+
+                            // Individual cancellation type amounts
+                            const cancel1 = getTypeAmount(row, 1);
+                            const cancel2 = getTypeAmount(row, 2);
+                            const cancel3 = getTypeAmount(row, 3);
 
                             const fertS = parseFloat(row.fertilizer_sales) || 0;
                             const bioS = parseFloat(row.bio_sales) || 0;
@@ -149,36 +138,27 @@ function Top10Table({ data, meta, cancellationTypes, onViewCancelledOrders, onVi
                                     </td>
                                     <td className="px-2 py-2.5 text-right font-bold text-blue-600">฿{fmt(totalSales)}</td>
 
-                                    {/* Cancelled */}
-                                    <td className="px-2 py-2.5 text-right relative">
-                                        {cancelledAmt > 0 ? (
-                                            <button onClick={() => setExpandedRow(isExpanded ? null : index)} className="inline-flex items-center gap-0.5 text-red-500 hover:text-red-700 font-bold cursor-pointer transition-colors group/c">
-                                                <span>฿{fmt(cancelledAmt)}</span>
-                                                <span className="material-symbols-outlined text-xs opacity-50 group-hover/c:opacity-100">{isExpanded ? 'expand_less' : 'expand_more'}</span>
+                                    {/* Cancelled - 3 separate columns */}
+                                    <td className="px-2 py-2.5 text-right">
+                                        {cancel1.amount > 0 ? (
+                                            <button onClick={() => onViewCancelledOrders?.({ userId: row.user_id, userName: row.salesperson_name, cancelTypeId: 1, cancelTypeLabel: cancelTypeShortLabels[1] })} className="text-red-400 hover:text-red-700 font-bold cursor-pointer transition-colors hover:underline">
+                                                ฿{fmt(cancel1.amount)}
                                             </button>
                                         ) : <span className="text-gray-300">-</span>}
-
-                                        {isExpanded && breakdown.length > 0 && (
-                                            <div ref={popupRef} className={`absolute right-0 z-[200] bg-white rounded-xl shadow-2xl border border-gray-100 w-64 overflow-hidden ${popAbove ? 'bottom-full mb-1' : 'top-full mt-1'}`} style={{ animation: `${popAbove ? 'fadeSlideUp' : 'fadeSlideIn'} 0.15s ease-out` }}>
-                                                <div className="px-3 py-2 bg-gradient-to-r from-red-50 to-orange-50 border-b border-gray-100">
-                                                    <p className="text-[10px] font-bold text-gray-700">แยกประเภทยกเลิก · {row.salesperson_name}</p>
-                                                </div>
-                                                <div className="divide-y divide-gray-50">
-                                                    {breakdown.map((item) => (
-                                                        <button key={item.typeId} onClick={() => { setExpandedRow(null); onViewCancelledOrders?.({ userId: row.user_id, userName: row.salesperson_name, cancelTypeId: item.typeId, cancelTypeLabel: item.label }); }} className="w-full px-3 py-2 flex items-center justify-between hover:bg-red-50/50 transition-colors text-left cursor-pointer group/item">
-                                                            <div className="min-w-0">
-                                                                <p className="text-[11px] font-medium text-gray-700 truncate">{item.label}</p>
-                                                                <p className="text-[9px] text-gray-400">{item.count} ออเดอร์</p>
-                                                            </div>
-                                                            <div className="flex items-center gap-1 flex-shrink-0">
-                                                                <span className="text-[11px] font-bold text-red-500">฿{fmt(item.amount)}</span>
-                                                                <span className="material-symbols-outlined text-xs text-gray-300 group-hover/item:text-primary">chevron_right</span>
-                                                            </div>
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        )}
+                                    </td>
+                                    <td className="px-2 py-2.5 text-right">
+                                        {cancel2.amount > 0 ? (
+                                            <button onClick={() => onViewCancelledOrders?.({ userId: row.user_id, userName: row.salesperson_name, cancelTypeId: 2, cancelTypeLabel: cancelTypeShortLabels[2] })} className="text-red-500 hover:text-red-700 font-bold cursor-pointer transition-colors hover:underline">
+                                                ฿{fmt(cancel2.amount)}
+                                            </button>
+                                        ) : <span className="text-gray-300">-</span>}
+                                    </td>
+                                    <td className="px-2 py-2.5 text-right">
+                                        {cancel3.amount > 0 ? (
+                                            <button onClick={() => onViewCancelledOrders?.({ userId: row.user_id, userName: row.salesperson_name, cancelTypeId: 3, cancelTypeLabel: cancelTypeShortLabels[3] })} className="text-red-600 hover:text-red-800 font-bold cursor-pointer transition-colors hover:underline">
+                                                ฿{fmt(cancel3.amount)}
+                                            </button>
+                                        ) : <span className="text-gray-300">-</span>}
                                     </td>
 
                                     {/* Product breakdown inline */}

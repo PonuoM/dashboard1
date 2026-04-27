@@ -6,9 +6,11 @@ function Layout({ user, onLogout, children, currentPage, onPageChange }) {
 
     // Page title mapping
     const pageTitles = {
+        'executive-insight': { title: 'สรุปภาพรวม', subtitle: 'Executive Insight' },
         'dashboard': { title: 'ภาพรวมบริษัท', subtitle: 'Dashboard' },
         'sales': { title: 'รายงาน Telesale', subtitle: 'รายงานรายเดือน' },
         'talk-time': { title: 'Talk Time', subtitle: 'สถิติการโทร' },
+        'returned-details': { title: 'รายละเอียดตีกลับ', subtitle: 'รายงาน Telesale' },
         'admin-sales': { title: 'รายงานยอดขาย', subtitle: 'Admin Reports' },
         'page-analysis': { title: 'วิเคราะห์ Page', subtitle: 'Admin Reports' },
         'ads-summary': { title: 'สรุป Ads', subtitle: 'Admin Reports' },

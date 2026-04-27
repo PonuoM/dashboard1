@@ -91,6 +91,7 @@ $summary_sql = "
         AND o.order_date <= '$end_date'
         AND o.order_status != 'Cancelled'
         AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+        AND (oi.is_promotion_parent = 0 OR oi.is_promotion_parent IS NULL)
         $dept_filter
         $access_filter
     GROUP BY 
@@ -148,6 +149,7 @@ $customer_type_sql = "
         AND o.order_date <= '$end_date'
         AND o.order_status != 'Cancelled'
         AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+        AND (oi.is_promotion_parent = 0 OR oi.is_promotion_parent IS NULL)
         $dept_filter
         $access_filter
     GROUP BY 
@@ -242,6 +244,7 @@ $monthly_sql = "
         AND o.order_date <= '$end_date'
         AND o.order_status != 'Cancelled'
         AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+        AND (oi.is_promotion_parent = 0 OR oi.is_promotion_parent IS NULL)
         $dept_filter
         $access_filter
     GROUP BY COALESCE(p.name, oi.product_name), MONTH(o.order_date)
@@ -306,6 +309,7 @@ $perf_sql = "
         AND o.order_date <= '$end_date'
         AND o.order_status != 'Cancelled'
         AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+        AND (oi.is_promotion_parent = 0 OR oi.is_promotion_parent IS NULL)
         $dept_filter
         $access_filter
     GROUP BY 

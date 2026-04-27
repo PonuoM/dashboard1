@@ -8,11 +8,13 @@ import { DashboardPage } from './pages/Dashboard'
 import { ProductAnalysisPage } from './pages/ProductAnalysis'
 import { RegionalSalesPage } from './pages/RegionalSales'
 import { TalkTimePage } from './pages/TalkTime'
+import { ReturnedDetailsPage } from './pages/ReturnedDetails'
 import { AdminSalesReportPage } from './pages/AdminSalesReport'
 import { PageAnalysisPage } from './pages/PageAnalysis'
 import { AdsSummaryPage } from './pages/AdsSummary'
 import { IndividualSalesPage } from './pages/IndividualSales'
 import { AccountingPage } from './pages/Accounting'
+import { ExecutiveInsightPage } from './pages/ExecutiveInsight'
 
 function App() {
   // User state from localStorage
@@ -69,6 +71,8 @@ function App() {
         return <RegionalSalesPage user={user} />
       case 'talk-time':
         return <TalkTimePage user={user} />
+      case 'returned-details':
+        return <ReturnedDetailsPage user={user} />
       case 'admin-sales':
         // Redirect Supervisor Telesale to sales page
         if (user?.role === 'Supervisor Telesale') {
@@ -93,6 +97,8 @@ function App() {
         return <IndividualSalesPage user={user} />
       case 'accounting':
         return <AccountingPage user={user} />
+      case 'executive-insight':
+        return <ExecutiveInsightPage user={user} />
       default:
         if (user?.role === 'Supervisor Telesale') {
           return <SalesReportPage user={user} />

@@ -14,8 +14,9 @@ include '../db.php';
 
 // Get parameters
 $company_id = isset($_GET['company_id']) ? intval($_GET['company_id']) : 0;
-$month = isset($_GET['month']) ? intval($_GET['month']) : date('n');
-$year = isset($_GET['year']) ? intval($_GET['year']) : date('Y');
+$month_param = isset($_GET['month']) ? $_GET['month'] : strval(date('n'));
+$year_param = isset($_GET['year']) ? $_GET['year'] : strval(date('Y'));
+$salesperson_id = isset($_GET['salesperson_id']) ? intval($_GET['salesperson_id']) : 0;
 
 // Validate
 if ($company_id <= 0) {
@@ -23,14 +24,28 @@ if ($company_id <= 0) {
     exit;
 }
 
-// Calculate date range
-if ($month === 0) {
-    // Full year
-    $start_date = sprintf('%04d-01-01 00:00:00', $year);
-    $end_date = sprintf('%04d-01-01 00:00:00', $year + 1);
+// Calculate date range for multi-select
+$months = array_filter(array_map('intval', explode(',', $month_param)));
+$years = array_filter(array_map('intval', explode(',', $year_param)));
+
+if (empty($years)) {
+    $years = [intval(date('Y'))];
+}
+$year_in = implode(',', $years);
+
+if (empty($months) || in_array(0, $months)) {
+    $is_all_year = true;
+    $date_condition = "YEAR(o.order_date) IN ($year_in)";
 } else {
-    $start_date = sprintf('%04d-%02d-01 00:00:00', $year, $month);
-    $end_date = date('Y-m-d 00:00:00', strtotime($start_date . ' +1 month'));
+    $is_all_year = false;
+    $month_in = implode(',', $months);
+    $date_condition = "YEAR(o.order_date) IN ($year_in) AND MONTH(o.order_date) IN ($month_in)";
+}
+
+// Salesperson filter — filter by oi.creator_id (item-level seller)
+$salesperson_condition = "";
+if ($salesperson_id > 0) {
+    $salesperson_condition = "AND COALESCE(oi.creator_id, o.creator_id) = $salesperson_id";
 }
 
 try {
@@ -46,15 +61,49 @@ try {
         INNER JOIN order_items oi ON o.id = oi.parent_order_id
         WHERE 
             o.company_id = ?
-            AND o.order_date >= ?
-            AND o.order_date < ?
+            AND $date_condition
             AND o.order_status != 'Cancelled'
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND (oi.is_promotion_parent = 0 OR oi.is_promotion_parent IS NULL)
+            $salesperson_condition
     ";
     $stmt = $conn->prepare($summary_sql);
-    $stmt->bind_param("iss", $company_id, $start_date, $end_date);
+    $stmt->bind_param("i", $company_id);
     $stmt->execute();
     $summary = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+
+    // =============================================
+    // 1.5 Overall Status Summary
+    // =============================================
+    $overall_status_sql = "
+        SELECT 
+            o.order_status,
+            COUNT(DISTINCT o.id) AS order_count,
+            COALESCE(SUM(oi.net_total), 0) AS total_sales
+        FROM orders o
+        INNER JOIN order_items oi ON o.id = oi.parent_order_id
+        WHERE 
+            o.company_id = ?
+            AND $date_condition
+            AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND (oi.is_promotion_parent = 0 OR oi.is_promotion_parent IS NULL)
+            $salesperson_condition
+        GROUP BY o.order_status
+        ORDER BY order_count DESC
+    ";
+    $stmt = $conn->prepare($overall_status_sql);
+    $stmt->bind_param("i", $company_id);
+    $stmt->execute();
+    $status_result = $stmt->get_result();
+    $overall_status_summary = [];
+    while ($row = $status_result->fetch_assoc()) {
+        $overall_status_summary[] = [
+            'status' => $row['order_status'],
+            'order_count' => intval($row['order_count']),
+            'total_sales' => floatval($row['total_sales'])
+        ];
+    }
     $stmt->close();
 
     // =============================================
@@ -71,18 +120,19 @@ try {
             COALESCE(SUM(oi.net_total), 0) AS total_sales
         FROM orders o
         INNER JOIN order_items oi ON o.id = oi.parent_order_id
-        INNER JOIN users u ON o.creator_id = u.id
+        INNER JOIN users u ON COALESCE(oi.creator_id, o.creator_id) = u.id
         WHERE 
             o.company_id = ?
-            AND o.order_date >= ?
-            AND o.order_date < ?
+            AND $date_condition
             AND o.order_status != 'Cancelled'
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND (oi.is_promotion_parent = 0 OR oi.is_promotion_parent IS NULL)
+            $salesperson_condition
         GROUP BY department
         ORDER BY total_sales DESC
     ";
     $stmt = $conn->prepare($dept_sql);
-    $stmt->bind_param("iss", $company_id, $start_date, $end_date);
+    $stmt->bind_param("i", $company_id);
     $stmt->execute();
     $dept_result = $stmt->get_result();
     $by_department = [];
@@ -92,7 +142,7 @@ try {
     $stmt->close();
 
     // =============================================
-    // 2.5 Department Product Details (for drill-down)
+    // 2.5 Department Product Details (with Status Breakdown)
     // =============================================
     $dept_detail_sql = "
         SELECT 
@@ -105,22 +155,29 @@ try {
             p.name AS product_name,
             p.category AS product_category,
             SUM(oi.quantity) AS total_quantity,
-            COALESCE(SUM(oi.net_total), 0) AS total_sales
+            COALESCE(SUM(oi.net_total), 0) AS total_sales,
+            SUM(CASE WHEN o.order_status = 'Delivered' THEN oi.quantity ELSE 0 END) AS delivered_qty,
+            COALESCE(SUM(CASE WHEN o.order_status = 'Delivered' THEN oi.net_total ELSE 0 END), 0) AS delivered_sales,
+            SUM(CASE WHEN o.order_status = 'Returned' THEN oi.quantity ELSE 0 END) AS returned_qty,
+            COALESCE(SUM(CASE WHEN o.order_status = 'Returned' THEN oi.net_total ELSE 0 END), 0) AS returned_sales,
+            SUM(CASE WHEN o.order_status NOT IN ('Delivered', 'Returned', 'Cancelled') THEN oi.quantity ELSE 0 END) AS other_qty,
+            COALESCE(SUM(CASE WHEN o.order_status NOT IN ('Delivered', 'Returned', 'Cancelled') THEN oi.net_total ELSE 0 END), 0) AS other_sales
         FROM orders o
         INNER JOIN order_items oi ON o.id = oi.parent_order_id
-        INNER JOIN users u ON o.creator_id = u.id
+        INNER JOIN users u ON COALESCE(oi.creator_id, o.creator_id) = u.id
         LEFT JOIN products p ON oi.product_id = p.id
         WHERE 
             o.company_id = ?
-            AND o.order_date >= ?
-            AND o.order_date < ?
+            AND $date_condition
             AND o.order_status != 'Cancelled'
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND (oi.is_promotion_parent = 0 OR oi.is_promotion_parent IS NULL)
+            $salesperson_condition
         GROUP BY department, p.id, p.name, p.category
         ORDER BY department, total_sales DESC
     ";
     $stmt = $conn->prepare($dept_detail_sql);
-    $stmt->bind_param("iss", $company_id, $start_date, $end_date);
+    $stmt->bind_param("i", $company_id);
     $stmt->execute();
     $dept_detail_result = $stmt->get_result();
     $department_details = [];
@@ -134,7 +191,146 @@ try {
             'product_name' => shorten_product_name($row['product_name']),
             'product_category' => $row['product_category'],
             'quantity' => intval($row['total_quantity']),
-            'sales' => floatval($row['total_sales'])
+            'sales' => floatval($row['total_sales']),
+            'delivered_qty' => intval($row['delivered_qty']),
+            'delivered_sales' => floatval($row['delivered_sales']),
+            'returned_qty' => intval($row['returned_qty']),
+            'returned_sales' => floatval($row['returned_sales']),
+            'other_qty' => intval($row['other_qty']),
+            'other_sales' => floatval($row['other_sales'])
+        ];
+    }
+    $stmt->close();
+
+    // =============================================
+    // 2.6 Department Salesperson Details (with Status Breakdown)
+    // =============================================
+    $salesperson_sql = "
+        SELECT 
+            CASE 
+                WHEN u.role IN ('Telesale', 'Supervisor Telesale') THEN 'Telesale'
+                WHEN u.role = 'Admin Page' THEN 'Admin Page'
+                ELSE 'Others'
+            END AS department,
+            u.id AS user_id,
+            u.first_name,
+            u.last_name,
+            COUNT(DISTINCT CASE WHEN o.order_status NOT IN ('Returned', 'Cancelled', 'BadDebt') THEN o.id END) AS total_orders,
+            COALESCE(SUM(CASE WHEN o.order_status NOT IN ('Returned', 'Cancelled', 'BadDebt') THEN oi.net_total ELSE 0 END), 0) AS total_sales,
+            
+            COUNT(DISTINCT CASE WHEN o.order_status = 'Delivered' THEN o.id END) AS delivered_orders,
+            COALESCE(SUM(CASE WHEN o.order_status = 'Delivered' THEN oi.net_total ELSE 0 END), 0) AS delivered_sales,
+            
+            COUNT(DISTINCT CASE WHEN o.order_status = 'Returned' THEN o.id END) AS returned_orders,
+            COALESCE(SUM(CASE WHEN o.order_status = 'Returned' THEN oi.net_total ELSE 0 END), 0) AS returned_sales,
+            
+            COUNT(DISTINCT CASE WHEN o.order_status = 'Returned' AND ob.return_status = 'good' THEN o.id END) AS returned_good_orders,
+            COALESCE(SUM(CASE WHEN o.order_status = 'Returned' AND ob.return_status = 'good' THEN oi.net_total ELSE 0 END), 0) AS returned_good_sales,
+            
+            COUNT(DISTINCT CASE WHEN o.order_status = 'Returned' AND ob.return_status = 'damaged' THEN o.id END) AS returned_damaged_orders,
+            COALESCE(SUM(CASE WHEN o.order_status = 'Returned' AND ob.return_status = 'damaged' THEN oi.net_total ELSE 0 END), 0) AS returned_damaged_sales,
+            
+            COUNT(DISTINCT CASE WHEN o.order_status = 'Returned' AND ob.return_status = 'returning' THEN o.id END) AS returned_returning_orders,
+            COALESCE(SUM(CASE WHEN o.order_status = 'Returned' AND ob.return_status = 'returning' THEN oi.net_total ELSE 0 END), 0) AS returned_returning_sales,
+            
+            COUNT(DISTINCT CASE WHEN o.order_status = 'Returned' AND ob.return_status = 'lost' THEN o.id END) AS returned_lost_orders,
+            COALESCE(SUM(CASE WHEN o.order_status = 'Returned' AND ob.return_status = 'lost' THEN oi.net_total ELSE 0 END), 0) AS returned_lost_sales,
+            
+            COUNT(DISTINCT CASE WHEN o.order_status = 'Returned' AND COALESCE(ob.return_status, '') NOT IN ('good', 'damaged', 'returning', 'lost') THEN o.id END) AS returned_other_orders,
+            COALESCE(SUM(CASE WHEN o.order_status = 'Returned' AND COALESCE(ob.return_status, '') NOT IN ('good', 'damaged', 'returning', 'lost') THEN oi.net_total ELSE 0 END), 0) AS returned_other_sales,
+            
+            COUNT(DISTINCT CASE WHEN o.order_status = 'Cancelled' THEN o.id END) AS cancelled_orders,
+            COALESCE(SUM(CASE WHEN o.order_status = 'Cancelled' THEN oi.net_total ELSE 0 END), 0) AS cancelled_sales,
+            
+            COUNT(DISTINCT CASE WHEN o.order_status = 'Cancelled' AND COALESCE(oc.cancellation_type_id, 0) = 1 THEN o.id END) AS cancelled_type1_orders,
+            COALESCE(SUM(CASE WHEN o.order_status = 'Cancelled' AND COALESCE(oc.cancellation_type_id, 0) = 1 THEN oi.net_total ELSE 0 END), 0) AS cancelled_type1_sales,
+            
+            COUNT(DISTINCT CASE WHEN o.order_status = 'Cancelled' AND COALESCE(oc.cancellation_type_id, 0) = 2 THEN o.id END) AS cancelled_type2_orders,
+            COALESCE(SUM(CASE WHEN o.order_status = 'Cancelled' AND COALESCE(oc.cancellation_type_id, 0) = 2 THEN oi.net_total ELSE 0 END), 0) AS cancelled_type2_sales,
+            
+            COUNT(DISTINCT CASE WHEN o.order_status = 'Cancelled' AND COALESCE(oc.cancellation_type_id, 0) = 3 THEN o.id END) AS cancelled_type3_orders,
+            COALESCE(SUM(CASE WHEN o.order_status = 'Cancelled' AND COALESCE(oc.cancellation_type_id, 0) = 3 THEN oi.net_total ELSE 0 END), 0) AS cancelled_type3_sales,
+            
+            COUNT(DISTINCT CASE WHEN o.order_status = 'BadDebt' THEN o.id END) AS baddebt_orders,
+            COALESCE(SUM(CASE WHEN o.order_status = 'BadDebt' THEN oi.net_total ELSE 0 END), 0) AS baddebt_sales,
+            
+            COUNT(DISTINCT CASE WHEN o.order_status NOT IN ('Delivered', 'Returned', 'Cancelled', 'BadDebt') THEN o.id END) AS other_orders,
+            COALESCE(SUM(CASE WHEN o.order_status NOT IN ('Delivered', 'Returned', 'Cancelled', 'BadDebt') THEN oi.net_total ELSE 0 END), 0) AS other_sales
+        FROM orders o
+        INNER JOIN order_items oi ON o.id = oi.parent_order_id
+        INNER JOIN users u ON COALESCE(oi.creator_id, o.creator_id) = u.id
+        LEFT JOIN order_cancellations oc ON o.id = oc.order_id
+        LEFT JOIN (
+            SELECT order_id, MAX(return_status) as return_status 
+            FROM order_boxes 
+            GROUP BY order_id
+        ) ob ON o.id = ob.order_id
+        WHERE 
+            o.company_id = ?
+            AND $date_condition
+            AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND (oi.is_promotion_parent = 0 OR oi.is_promotion_parent IS NULL)
+            $salesperson_condition
+        GROUP BY department, u.id, u.first_name, u.last_name
+        ORDER BY department, total_sales DESC
+    ";
+    $stmt = $conn->prepare($salesperson_sql);
+    if (!$stmt) {
+        throw new Exception('Salesperson SQL error: ' . $conn->error . "\nSQL: " . substr($salesperson_sql, 0, 500));
+    }
+    $stmt->bind_param("i", $company_id);
+    $stmt->execute();
+    $salesperson_result = $stmt->get_result();
+    $salesperson_details = [];
+    while ($row = $salesperson_result->fetch_assoc()) {
+        $dept = $row['department'];
+        if (!isset($salesperson_details[$dept])) {
+            $salesperson_details[$dept] = [];
+        }
+        $salesperson_details[$dept][] = [
+            'user_id' => $row['user_id'],
+            'name' => trim($row['first_name'] . ' ' . $row['last_name']),
+            'total_orders' => intval($row['total_orders']),
+            'total_sales' => floatval($row['total_sales']),
+            
+            'delivered_orders' => intval($row['delivered_orders']),
+            'delivered_sales' => floatval($row['delivered_sales']),
+            
+            'returned_orders' => intval($row['returned_orders']),
+            'returned_sales' => floatval($row['returned_sales']),
+            
+            'returned_good_orders' => intval($row['returned_good_orders']),
+            'returned_good_sales' => floatval($row['returned_good_sales']),
+            
+            'returned_damaged_orders' => intval($row['returned_damaged_orders']),
+            'returned_damaged_sales' => floatval($row['returned_damaged_sales']),
+            
+            'returned_returning_orders' => intval($row['returned_returning_orders']),
+            'returned_returning_sales' => floatval($row['returned_returning_sales']),
+            
+            'returned_lost_orders' => intval($row['returned_lost_orders']),
+            'returned_lost_sales' => floatval($row['returned_lost_sales']),
+            
+            'returned_other_orders' => intval($row['returned_other_orders']),
+            'returned_other_sales' => floatval($row['returned_other_sales']),
+            
+            'cancelled_orders' => intval($row['cancelled_orders']),
+            'cancelled_sales' => floatval($row['cancelled_sales']),
+            
+            'cancelled_type1_orders' => intval($row['cancelled_type1_orders']),
+            'cancelled_type1_sales' => floatval($row['cancelled_type1_sales']),
+            
+            'cancelled_type2_orders' => intval($row['cancelled_type2_orders']),
+            'cancelled_type2_sales' => floatval($row['cancelled_type2_sales']),
+            
+            'cancelled_type3_orders' => intval($row['cancelled_type3_orders']),
+            'cancelled_type3_sales' => floatval($row['cancelled_type3_sales']),
+            
+            'baddebt_orders' => intval($row['baddebt_orders']),
+            'baddebt_sales' => floatval($row['baddebt_sales']),
+            
+            'other_orders' => intval($row['other_orders']),
+            'other_sales' => floatval($row['other_sales'])
         ];
     }
     $stmt->close();
@@ -151,15 +347,16 @@ try {
         INNER JOIN order_items oi ON o.id = oi.parent_order_id
         WHERE 
             o.company_id = ?
-            AND o.order_date >= ?
-            AND o.order_date < ?
+            AND $date_condition
             AND o.order_status != 'Cancelled'
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND (oi.is_promotion_parent = 0 OR oi.is_promotion_parent IS NULL)
+            $salesperson_condition
         GROUP BY channel
         ORDER BY total_sales DESC
     ";
     $stmt = $conn->prepare($channel_sql);
-    $stmt->bind_param("iss", $company_id, $start_date, $end_date);
+    $stmt->bind_param("i", $company_id);
     $stmt->execute();
     $channel_result = $stmt->get_result();
     $by_channel = [];
@@ -185,15 +382,16 @@ try {
         LEFT JOIN products p ON oi.product_id = p.id
         WHERE 
             o.company_id = ?
-            AND o.order_date >= ?
-            AND o.order_date < ?
+            AND $date_condition
             AND o.order_status != 'Cancelled'
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND (oi.is_promotion_parent = 0 OR oi.is_promotion_parent IS NULL)
+            $salesperson_condition
         GROUP BY category_name
         ORDER BY total_sales DESC
     ";
     $stmt = $conn->prepare($category_sql);
-    $stmt->bind_param("iss", $company_id, $start_date, $end_date);
+    $stmt->bind_param("i", $company_id);
     $stmt->execute();
     $category_result = $stmt->get_result();
     $by_category = [];
@@ -222,15 +420,16 @@ try {
         LEFT JOIN products p ON oi.product_id = p.id
         WHERE 
             o.company_id = ?
-            AND o.order_date >= ?
-            AND o.order_date < ?
+            AND $date_condition
             AND o.order_status != 'Cancelled'
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND (oi.is_promotion_parent = 0 OR oi.is_promotion_parent IS NULL)
+            $salesperson_condition
         GROUP BY category_name, p.id, p.name, p.category
         ORDER BY category_name, total_sales DESC
     ";
     $stmt = $conn->prepare($cat_detail_sql);
-    $stmt->bind_param("iss", $company_id, $start_date, $end_date);
+    $stmt->bind_param("i", $company_id);
     $stmt->execute();
     $cat_detail_result = $stmt->get_result();
     $category_details = [];
@@ -253,19 +452,19 @@ try {
     // =============================================
     // 6. Previous Month Summary (for growth calculation)
     // =============================================
+    // Previous period summary (for growth — only when single month selected)
     $prev_summary = ['total_sales' => 0, 'total_orders' => 0, 'total_customers' => 0];
     
-    if ($month > 0) {
-        // Calculate previous month
-        $prev_month = $month - 1;
-        $prev_year = $year;
+    if (count($months) === 1) {
+        $single_month = reset($months);
+        $single_year = count($years) === 1 ? reset($years) : intval(date('Y'));
+        $prev_month = $single_month - 1;
+        $prev_year = $single_year;
         if ($prev_month == 0) {
             $prev_month = 12;
-            $prev_year = $year - 1;
+            $prev_year = $single_year - 1;
         }
-        $prev_start = sprintf('%04d-%02d-01 00:00:00', $prev_year, $prev_month);
-        $prev_end = date('Y-m-d 00:00:00', strtotime($prev_start . ' +1 month'));
-        
+        $prev_date_cond = "YEAR(o.order_date) = $prev_year AND MONTH(o.order_date) = $prev_month";
         $prev_sql = "
             SELECT 
                 COUNT(DISTINCT o.id) AS total_orders,
@@ -275,14 +474,15 @@ try {
             INNER JOIN order_items oi ON o.id = oi.parent_order_id
             WHERE 
                 o.company_id = ?
-                AND o.order_date >= ?
-                AND o.order_date < ?
+                AND $prev_date_cond
                 AND o.order_status != 'Cancelled'
                 AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+                AND (oi.is_promotion_parent = 0 OR oi.is_promotion_parent IS NULL)
+                $salesperson_condition
         ";
         $stmt = $conn->prepare($prev_sql);
         if ($stmt) {
-            $stmt->bind_param("iss", $company_id, $prev_start, $prev_end);
+            $stmt->bind_param("i", $company_id);
             $stmt->execute();
             $prev_summary = $stmt->get_result()->fetch_assoc();
             $stmt->close();
@@ -301,14 +501,16 @@ try {
         INNER JOIN order_items oi ON o.id = oi.parent_order_id
         WHERE 
             o.company_id = ?
-            AND YEAR(o.order_date) = ?
+            AND YEAR(o.order_date) IN ($year_in)
             AND o.order_status != 'Cancelled'
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND (oi.is_promotion_parent = 0 OR oi.is_promotion_parent IS NULL)
+            $salesperson_condition
         GROUP BY MONTH(o.order_date)
         ORDER BY month_num
     ";
     $stmt = $conn->prepare($monthly_sql);
-    $stmt->bind_param("ii", $company_id, $year);
+    $stmt->bind_param("i", $company_id);
     $stmt->execute();
     $monthly_result = $stmt->get_result();
     
@@ -336,22 +538,20 @@ try {
         'success' => true,
         'data' => [
             'summary' => $summary,
+            'overall_status_summary' => $overall_status_summary,
             'prev_summary' => $prev_summary,
             'monthly_sales' => $monthly_sales,
             'by_department' => $by_department,
             'department_details' => $department_details,
             'by_channel' => $by_channel,
             'by_category' => $by_category,
-            'category_details' => $category_details
+            'category_details' => $category_details,
+            'salesperson_details' => $salesperson_details
         ],
         'filters' => [
             'company_id' => $company_id,
-            'month' => $month,
-            'year' => $year,
-            'date_range' => [
-                'start' => $start_date,
-                'end' => $end_date
-            ]
+            'month' => $month_param,
+            'year' => $year_param
         ]
     ]);
 

@@ -120,6 +120,7 @@ try {
             AND o.order_date < ?
             AND (p.category LIKE '%ปุ๋ย%' OR p.category = 'ชีวภัณฑ์')
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND (oi.is_promotion_parent = 0 OR oi.is_promotion_parent IS NULL)
             {$cancelled_filter}
             {$access_filter}
         GROUP BY product_type
@@ -143,6 +144,7 @@ try {
             u.id AS user_id,
             u.first_name AS salesperson_name,
             u.role AS role_name,
+            u.supervisor_id,
             COALESCE(SUM(CASE WHEN p.category LIKE '%ปุ๋ย%' THEN oi.quantity ELSE 0 END), 0) AS fertilizer_qty,
             COALESCE(SUM(CASE WHEN p.category LIKE '%ปุ๋ย%' THEN oi.net_total ELSE 0 END), 0) AS fertilizer_sales,
             COUNT(DISTINCT CASE WHEN p.category LIKE '%ปุ๋ย%' THEN o.id END) AS fertilizer_orders,
@@ -162,9 +164,10 @@ try {
             AND o.order_date < ?
             AND (p.category LIKE '%ปุ๋ย%' OR p.category = 'ชีวภัณฑ์')
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND (oi.is_promotion_parent = 0 OR oi.is_promotion_parent IS NULL)
             {$cancelled_filter}
             {$access_filter}
-        GROUP BY u.id, u.first_name, u.role
+        GROUP BY u.id, u.first_name, u.role, u.supervisor_id
         ORDER BY total_sales DESC
     ";
 
@@ -217,6 +220,7 @@ try {
             AND o.order_date < ?
             AND (p.category LIKE '%ปุ๋ย%' OR p.category = 'ชีวภัณฑ์')
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND (oi.is_promotion_parent = 0 OR oi.is_promotion_parent IS NULL)
             AND o.order_status NOT IN ('Cancelled', 'Returned', 'BadDebt')
         GROUP BY u.id
     ";
@@ -231,10 +235,12 @@ try {
 
     // Query 5: Get cancelled order amounts by salesperson AND cancellation type for current month
     $cancelled_by_type = []; // user_id => [ type_id => { amount, count } ]
-    $cancelled_amounts = []; // user_id => total (backward compat)
+    $cancelled_amounts = []; // user_id => total
+    $baddebt_amounts = []; // user_id => total
     $cancelled_sql = "
         SELECT 
             u.id AS user_id,
+            o.order_status,
             COALESCE(oc.cancellation_type_id, 0) AS cancel_type_id,
             COALESCE(SUM(oi.net_total), 0) AS cancelled_total,
             COUNT(DISTINCT o.id) AS cancelled_count
@@ -250,8 +256,9 @@ try {
             AND o.order_date < ?
             AND (p.category LIKE '%ปุ๋ย%' OR p.category = 'ชีวภัณฑ์')
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND (oi.is_promotion_parent = 0 OR oi.is_promotion_parent IS NULL)
             AND o.order_status IN ('Cancelled', 'BadDebt')
-        GROUP BY u.id, oc.cancellation_type_id
+        GROUP BY u.id, o.order_status, oc.cancellation_type_id
     ";
     $stmt = $conn->prepare($cancelled_sql);
     if ($stmt) {
@@ -260,14 +267,21 @@ try {
         $cancelled_result = $stmt->get_result();
         while ($row = $cancelled_result->fetch_assoc()) {
             $uid = $row['user_id'];
+            $status = $row['order_status'];
             $tid = intval($row['cancel_type_id']);
-            if (!isset($cancelled_by_type[$uid])) $cancelled_by_type[$uid] = [];
-            $cancelled_by_type[$uid][$tid] = [
-                'amount' => floatval($row['cancelled_total']),
-                'count' => intval($row['cancelled_count'])
-            ];
-            if (!isset($cancelled_amounts[$uid])) $cancelled_amounts[$uid] = 0;
-            $cancelled_amounts[$uid] += floatval($row['cancelled_total']);
+            
+            if ($status === 'Cancelled') {
+                if (!isset($cancelled_by_type[$uid])) $cancelled_by_type[$uid] = [];
+                $cancelled_by_type[$uid][$tid] = [
+                    'amount' => floatval($row['cancelled_total']),
+                    'count' => intval($row['cancelled_count'])
+                ];
+                if (!isset($cancelled_amounts[$uid])) $cancelled_amounts[$uid] = 0;
+                $cancelled_amounts[$uid] += floatval($row['cancelled_total']);
+            } elseif ($status === 'BadDebt') {
+                if (!isset($baddebt_amounts[$uid])) $baddebt_amounts[$uid] = 0;
+                $baddebt_amounts[$uid] += floatval($row['cancelled_total']);
+            }
         }
         $stmt->close();
     }
@@ -283,10 +297,12 @@ try {
 
     // Query 5c: Get returned amounts by salesperson
     $returned_amounts = [];
+    $returned_counts = [];
     $returned_sql = "
         SELECT 
             u.id AS user_id,
-            COALESCE(SUM(oi.net_total), 0) AS returned_total
+            COALESCE(SUM(oi.net_total), 0) AS returned_total,
+            COUNT(DISTINCT o.id) AS returned_count
         FROM orders o
         INNER JOIN order_items oi ON o.id = oi.parent_order_id
         INNER JOIN products p ON oi.product_id = p.id
@@ -298,6 +314,7 @@ try {
             AND o.order_date < ?
             AND (p.category LIKE '%ปุ๋ย%' OR p.category = 'ชีวภัณฑ์')
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND (oi.is_promotion_parent = 0 OR oi.is_promotion_parent IS NULL)
             AND o.order_status = 'Returned'
         GROUP BY u.id
     ";
@@ -308,6 +325,7 @@ try {
         $ret_result = $stmt->get_result();
         while ($row = $ret_result->fetch_assoc()) {
             $returned_amounts[$row['user_id']] = floatval($row['returned_total']);
+            $returned_counts[$row['user_id']] = intval($row['returned_count']);
         }
         $stmt->close();
     }
@@ -330,7 +348,9 @@ try {
         $person['target_amount'] = isset($targets[$uid]) ? $targets[$uid] : null;
         $person['prev_month_sales'] = isset($prev_sales[$uid]) ? $prev_sales[$uid] : 0;
         $person['cancelled_amount'] = isset($cancelled_amounts[$uid]) ? $cancelled_amounts[$uid] : 0;
+        $person['baddebt_amount'] = isset($baddebt_amounts[$uid]) ? $baddebt_amounts[$uid] : 0;
         $person['returned_amount'] = isset($returned_amounts[$uid]) ? $returned_amounts[$uid] : 0;
+        $person['returned_count'] = isset($returned_counts[$uid]) ? $returned_counts[$uid] : 0;
         $person['cancelled_by_type'] = isset($cancelled_by_type[$uid]) ? $cancelled_by_type[$uid] : new \stdClass();
     }
 
@@ -348,6 +368,7 @@ try {
             AND o.order_date < ?
             AND (p.category LIKE '%ปุ๋ย%' OR p.category = 'ชีวภัณฑ์')
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND (oi.is_promotion_parent = 0 OR oi.is_promotion_parent IS NULL)
             {$cancelled_filter}
             {$access_filter}
     ";

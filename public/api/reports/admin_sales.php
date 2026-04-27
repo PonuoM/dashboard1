@@ -76,11 +76,12 @@ try {
         INNER JOIN users u ON oi.creator_id = u.id
         WHERE 
             o.company_id = ?
-            AND u.role = 'Admin Page'
+            AND u.role NOT IN ('Telesale','Supervisor Telesale')
             AND o.order_date >= ?
             AND o.order_date < ?
             AND (p.category LIKE '%ปุ๋ย%' OR p.category = 'ชีวภัณฑ์')
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND (oi.is_promotion_parent = 0 OR oi.is_promotion_parent IS NULL)
             {$cancelled_filter}
         GROUP BY product_type
         ORDER BY product_type
@@ -103,6 +104,9 @@ try {
             u.id AS user_id,
             u.first_name AS salesperson_name,
             u.role AS role_name,
+            COUNT(DISTINCT o.id) AS total_orders,
+            COUNT(DISTINCT CASE WHEN p.category LIKE '%ปุ๋ย%' THEN o.id END) AS fertilizer_orders,
+            COUNT(DISTINCT CASE WHEN p.category = 'ชีวภัณฑ์' THEN o.id END) AS bio_orders,
             COALESCE(SUM(CASE WHEN p.category LIKE '%ปุ๋ย%' THEN oi.quantity ELSE 0 END), 0) AS fertilizer_qty,
             COALESCE(SUM(CASE WHEN p.category LIKE '%ปุ๋ย%' THEN oi.net_total ELSE 0 END), 0) AS fertilizer_sales,
             COALESCE(SUM(CASE WHEN p.category = 'ชีวภัณฑ์' THEN oi.quantity ELSE 0 END), 0) AS bio_qty,
@@ -114,11 +118,12 @@ try {
         INNER JOIN users u ON oi.creator_id = u.id
         WHERE 
             o.company_id = ?
-            AND u.role = 'Admin Page'
+            AND u.role NOT IN ('Telesale','Supervisor Telesale')
             AND o.order_date >= ?
             AND o.order_date < ?
             AND (p.category LIKE '%ปุ๋ย%' OR p.category = 'ชีวภัณฑ์')
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND (oi.is_promotion_parent = 0 OR oi.is_promotion_parent IS NULL)
             {$cancelled_filter}
         GROUP BY u.id, u.first_name, u.role
         ORDER BY total_sales DESC
@@ -156,11 +161,12 @@ try {
         INNER JOIN users u ON oi.creator_id = u.id
         WHERE 
             o.company_id = ?
-            AND u.role = 'Admin Page'
+            AND u.role NOT IN ('Telesale','Supervisor Telesale')
             AND o.order_date >= ?
             AND o.order_date < ?
             AND (p.category LIKE '%ปุ๋ย%' OR p.category = 'ชีวภัณฑ์')
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND (oi.is_promotion_parent = 0 OR oi.is_promotion_parent IS NULL)
             AND o.order_status != 'Cancelled'
         GROUP BY u.id
     ";
@@ -209,6 +215,7 @@ try {
             AND o.order_date < ?
             AND (p.category LIKE '%ปุ๋ย%' OR p.category = 'ชีวภัณฑ์')
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND (oi.is_promotion_parent = 0 OR oi.is_promotion_parent IS NULL)
             {$cancelled_filter}
         GROUP BY pg.platform
         ORDER BY total_sales DESC
@@ -246,6 +253,7 @@ try {
             AND o.order_date < ?
             AND (p.category LIKE '%ปุ๋ย%' OR p.category = 'ชีวภัณฑ์')
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND (oi.is_promotion_parent = 0 OR oi.is_promotion_parent IS NULL)
             {$cancelled_filter}
         GROUP BY pg.id, pg.name, pg.platform
         ORDER BY total_sales DESC

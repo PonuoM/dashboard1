@@ -1,0 +1,2 @@
+<?php
+// Removed - debug file

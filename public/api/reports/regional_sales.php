@@ -126,6 +126,7 @@ try {
             AND o.order_date < ?
             AND o.order_status != 'Cancelled'
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND (oi.is_promotion_parent = 0 OR oi.is_promotion_parent IS NULL)
             AND c.province IS NOT NULL 
             AND c.province != ''
             $dept_condition
@@ -187,6 +188,7 @@ try {
             AND o.order_date < ?
             AND o.order_status != 'Cancelled'
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND (oi.is_promotion_parent = 0 OR oi.is_promotion_parent IS NULL)
             $dept_condition
             $access_filter
         GROUP BY ag.id, ag.name

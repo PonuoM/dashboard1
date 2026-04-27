@@ -1,5 +1,5 @@
 
-function SummaryTable({ data, prevData, totalOrdersDistinct }) {
+function SummaryTable({ data, prevData, totalOrdersDistinct, bySalesperson, prevBySalesperson }) {
     const getDataByType = (arr, type) => (arr || []).find(d => d.product_type === type) || {};
 
     const fertData = getDataByType(data, 'fertilizer');
@@ -54,8 +54,16 @@ function SummaryTable({ data, prevData, totalOrdersDistinct }) {
     const fertPercent = totalSales > 0 ? ((parseFloat(fertData.total_sales) || 0) / totalSales * 100).toFixed(0) : 0;
     const bioPercent = totalSales > 0 ? ((parseFloat(bioData.total_sales) || 0) / totalSales * 100).toFixed(0) : 0;
 
+    const getReturned = (arr) => (arr || []).reduce((sum, p) => sum + (parseFloat(p.returned_amount) || 0), 0);
+    const totalReturned = getReturned(bySalesperson);
+    const prevTotalReturned = getReturned(prevBySalesperson);
+
+    const netSales = totalSales - totalReturned;
+    const prevNetSales = prevTotalSales - prevTotalReturned;
+    const netGrowth = calcGrowth(netSales, prevNetSales);
+
     return (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             {/* Total Summary Card */}
             <div className="glass-card rounded-2xl p-5 bg-gradient-to-br from-primary/10 to-amber-500/10 border-primary/20">
                 <div className="flex items-start justify-between mb-3">
@@ -84,6 +92,46 @@ function SummaryTable({ data, prevData, totalOrdersDistinct }) {
                     <div>
                         <p className="text-[9px] font-bold text-gray-400 uppercase">เฉลี่ย/ออเดอร์</p>
                         <p className="text-base font-bold text-amber-600">฿{formatCurrency(avgOrderValue)}</p>
+                    </div>
+                </div>
+            </div>
+
+            {/* Net Sales Card */}
+            <div className="glass-card rounded-2xl p-5 border-l-4 border-l-orange-500 relative group/netcard">
+                <div className="flex items-start justify-between mb-3">
+                    <div className="relative group/tip cursor-help">
+                        <h2 className="text-sm font-bold text-gray-700 inline-flex items-center gap-1">
+                            ยอดขายสุทธิ 
+                            <span className="material-symbols-outlined text-[14px] text-gray-400">info</span>
+                        </h2>
+                        <p className="text-[10px] text-orange-500 mt-0.5 font-medium">หักตีกลับ: ฿{formatCurrency(totalReturned)}</p>
+                        <span className="absolute top-full left-0 mt-2 hidden group-hover/tip:block z-[9999]">
+                            <span className="bg-gray-900 text-white text-[10px] rounded-lg py-1.5 px-3 whitespace-nowrap shadow-xl block">
+                                ยอดขายรวม หักลบด้วยยอดตีกลับ
+                            </span>
+                        </span>
+                    </div>
+                    <GrowthBadge growth={netGrowth} />
+                </div>
+                <div className="mb-4">
+                    <span className="text-3xl font-extrabold text-orange-600 tracking-tight">฿{formatCurrency(netSales)}</span>
+                </div>
+                <div className="grid grid-cols-4 gap-3 pt-3 border-t border-orange-200/50">
+                    <div>
+                        <p className="text-[9px] font-bold text-gray-400 uppercase">ออเดอร์</p>
+                        <p className="text-base font-bold text-orange-600">{formatNumber(totalOrders)}</p>
+                    </div>
+                    <div>
+                        <p className="text-[9px] font-bold text-gray-400 uppercase">สินค้า</p>
+                        <p className="text-base font-bold">{formatNumber(totalQuantity)}</p>
+                    </div>
+                    <div>
+                        <p className="text-[9px] font-bold text-gray-400 uppercase">ลูกค้า</p>
+                        <p className="text-base font-bold">{formatNumber(totalCustomers)}</p>
+                    </div>
+                    <div>
+                        <p className="text-[9px] font-bold text-gray-400 uppercase">เฉลี่ย/ออเดอร์</p>
+                        <p className="text-base font-bold text-orange-600">฿{formatCurrency(totalOrders > 0 ? Math.round(netSales / totalOrders) : 0)}</p>
                     </div>
                 </div>
             </div>

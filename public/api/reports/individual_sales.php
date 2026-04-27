@@ -76,6 +76,7 @@ try {
             AND o.order_date < ?
             AND o.order_status != 'Cancelled'
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND (oi.is_promotion_parent = 0 OR oi.is_promotion_parent IS NULL)
         ORDER BY u.first_name
     ";
     $stmt = $conn->prepare($users_sql);
@@ -108,6 +109,7 @@ try {
                 AND o.order_date < ?
                 AND o.order_status != 'Cancelled'
                 AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND (oi.is_promotion_parent = 0 OR oi.is_promotion_parent IS NULL)
                 $user_filter
             GROUP BY MONTH(o.order_date), DATE_FORMAT(o.order_date, '%Y-%m')
             ORDER BY period
@@ -129,6 +131,7 @@ try {
                 AND o.order_date < ?
                 AND o.order_status != 'Cancelled'
                 AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND (oi.is_promotion_parent = 0 OR oi.is_promotion_parent IS NULL)
                 $user_filter
             GROUP BY DAY(o.order_date), DATE(o.order_date)
             ORDER BY period
@@ -162,6 +165,7 @@ try {
             AND o.order_date < ?
             AND o.order_status != 'Cancelled'
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND (oi.is_promotion_parent = 0 OR oi.is_promotion_parent IS NULL)
             $user_filter
     ";
     $stmt = $conn->prepare($summary_sql);
@@ -188,6 +192,7 @@ try {
             AND o.order_date < ?
             AND o.order_status != 'Cancelled'
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND (oi.is_promotion_parent = 0 OR oi.is_promotion_parent IS NULL)
             $user_filter
         GROUP BY pg.platform
         ORDER BY total_sales DESC
@@ -217,6 +222,7 @@ try {
             AND o.order_date < ?
             AND o.order_status != 'Cancelled'
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND (oi.is_promotion_parent = 0 OR oi.is_promotion_parent IS NULL)
             $user_filter
         GROUP BY channel
         ORDER BY total_sales DESC
@@ -249,6 +255,7 @@ try {
             AND o.order_date < ?
             AND o.order_status != 'Cancelled'
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND (oi.is_promotion_parent = 0 OR oi.is_promotion_parent IS NULL)
             $user_filter
         GROUP BY p.id, p.name, p.category
         ORDER BY total_sales DESC
@@ -290,6 +297,7 @@ try {
                 AND o.order_date < ?
                 AND o.order_status != 'Cancelled'
                 AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND (oi.is_promotion_parent = 0 OR oi.is_promotion_parent IS NULL)
                 $user_filter
             GROUP BY MONTH(o.order_date), p.id, p.name
             ORDER BY period, total_sales DESC
@@ -312,6 +320,7 @@ try {
                 AND o.order_date < ?
                 AND o.order_status != 'Cancelled'
                 AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND (oi.is_promotion_parent = 0 OR oi.is_promotion_parent IS NULL)
                 $user_filter
             GROUP BY DAY(o.order_date), p.id, p.name
             ORDER BY period, total_sales DESC

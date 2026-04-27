@@ -5,6 +5,7 @@ header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 
 include '../db.php';
+require_once __DIR__ . '/../helpers/product_names.php';
 
 $company_id = isset($_GET['company_id']) ? intval($_GET['company_id']) : 0;
 $month = isset($_GET['month']) ? intval($_GET['month']) : date('n');
@@ -73,6 +74,7 @@ $pages_sql = "
         p.id,
         p.name as page_name,
         p.platform,
+        p.active,
         COUNT(DISTINCT o.id) as order_count,
         COALESCE(SUM(oi.net_total), 0) as total_sales
     FROM pages p
@@ -82,7 +84,7 @@ $pages_sql = "
         " . ($access_filter ? str_replace('o.creator_id', 'o.creator_id', $access_filter) : '') . "
     LEFT JOIN order_items oi ON oi.parent_order_id = o.id
     WHERE p.company_id = ?
-    GROUP BY p.id, p.name, p.platform
+    GROUP BY p.id, p.name, p.platform, p.active
     ORDER BY total_sales DESC
 ";
 
@@ -171,6 +173,11 @@ foreach ($pages as $page_id => $page) {
         'total_clicks' => 0
     ];
     
+    // Skip inactive pages that have no sales and no ads cost in this selected month
+    if (isset($page['active']) && $page['active'] == 0 && floatval($page['total_sales']) == 0 && floatval($ads['total_ads_cost']) == 0) {
+        continue;
+    }
+    
     $combined[] = [
         'page_id' => $page_id,
         'page_name' => $page['page_name'],
@@ -187,7 +194,7 @@ foreach ($pages as $page_id => $page) {
 
 // 5. Calculate summary
 $summary = [
-    'total_pages' => count($pages),
+    'total_pages' => count($combined),
     'total_orders' => array_sum(array_column($combined, 'order_count')),
     'total_sales' => array_sum(array_column($combined, 'total_sales')),
     'total_ads_cost' => array_sum(array_column($combined, 'ads_cost')),
@@ -223,6 +230,7 @@ $product_page_sql = "
         AND o.order_date BETWEEN ? AND ?
         AND o.order_status != 'Cancelled'
         AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+        AND (oi.is_promotion_parent = 0 OR oi.is_promotion_parent IS NULL)
         $access_filter
     GROUP BY o.sales_channel_page_id, pg.name, p.id, p.name, p.category
     ORDER BY pg.name, total_sales DESC
@@ -240,7 +248,7 @@ if ($stmt) {
             'page_id' => intval($row['page_id']),
             'page_name' => $row['page_name'],
             'product_id' => intval($row['product_id']),
-            'product_name' => $row['product_name'],
+            'product_name' => shorten_product_name($row['product_name']),
             'product_category' => $row['product_category'],
             'qty' => intval($row['total_qty']),
             'sales' => floatval($row['total_sales']),
@@ -251,7 +259,7 @@ if ($stmt) {
         if (!isset($all_products[$pid])) {
             $all_products[$pid] = [
                 'id' => $pid,
-                'name' => $row['product_name'],
+                'name' => shorten_product_name($row['product_name']),
                 'category' => $row['product_category']
             ];
         }

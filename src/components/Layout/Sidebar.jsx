@@ -12,6 +12,7 @@ function Sidebar({ user, onLogout, isExpanded, setIsExpanded, currentPage, onPag
 
     // Navigation items with categories
     const navItems = [
+        { id: 'executive-insight', icon: 'auto_awesome', label: 'สรุปภาพรวม', disabled: isSupervisor },
         { id: 'dashboard', icon: 'dashboard', label: 'แดชบอร์ด', disabled: isSupervisor },
         {
             id: 'telesale-reports',
@@ -21,6 +22,7 @@ function Sidebar({ user, onLogout, isExpanded, setIsExpanded, currentPage, onPag
             children: [
                 { id: 'sales', icon: 'analytics', label: 'รายงาน Telesale' },
                 { id: 'talk-time', icon: 'call', label: 'Talk Time' },
+                { id: 'returned-details', icon: 'assignment_return', label: 'รายละเอียดตีกลับ' },
             ]
         },
         {

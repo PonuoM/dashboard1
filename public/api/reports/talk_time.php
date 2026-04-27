@@ -88,14 +88,14 @@ try {
         ) team ON team.supervisor_id = u.id
         LEFT JOIN (
             SELECT 
-                phone_telesale,
+                matched_user_id,
                 COUNT(*) as total_calls,
-                SUM(CASE WHEN duration >= 40 THEN 1 ELSE 0 END) as connected_calls,
-                SUM(duration) as total_duration_seconds
-            FROM onecall_log
-            WHERE timestamp >= ? AND timestamp < ?
-            GROUP BY phone_telesale
-        ) calls ON u.phone = calls.phone_telesale
+                SUM(CASE WHEN status = 1 THEN 1 ELSE 0 END) as connected_calls,
+                SUM(TIME_TO_SEC(duration)) as total_duration_seconds
+            FROM call_import_logs
+            WHERE call_date >= ? AND call_date < ?
+            GROUP BY matched_user_id
+        ) calls ON u.id = calls.matched_user_id
         LEFT JOIN (
             SELECT 
                 user_id,
@@ -203,7 +203,7 @@ try {
     }
 
     // Get last update date from onecall_log
-    $lastUpdateResult = $conn->query("SELECT MAX(timestamp) as last_update FROM onecall_log");
+    $lastUpdateResult = $conn->query("SELECT MAX(call_date) as last_update FROM call_import_logs");
     $lastUpdate = null;
     if ($lastUpdateResult && $row = $lastUpdateResult->fetch_assoc()) {
         $lastUpdate = $row['last_update'];

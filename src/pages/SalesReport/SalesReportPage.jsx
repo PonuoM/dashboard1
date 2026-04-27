@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { SummaryTable, Top10Table } from '../../components/Tables';
+import { SummaryTable, TeamSalesCards } from '../../components/Tables';
 import { CustomSelect } from '../../components/UI';
 import TargetManagementPage from '../TargetManagement/TargetManagementPage';
 import CancelledOrdersModal from '../../components/Modals/CancelledOrdersModal';
@@ -139,6 +139,203 @@ function SalesReportPage({ user }) {
         }
     };
 
+    const handleExport = () => {
+        if (!data || !data.by_salesperson) return;
+
+        // Grouping & Sorting logic
+        const teams = {};
+        const supervisorMap = {};
+
+        data.by_salesperson.forEach(person => {
+            if (person.role_name === 'Supervisor Telesale') {
+                supervisorMap[person.user_id] = person;
+            }
+        });
+
+        let grandSales = 0, grandReturn = 0;
+
+        data.by_salesperson.forEach(person => {
+            let teamKey;
+            if (person.role_name === 'Supervisor Telesale') {
+                teamKey = person.user_id;
+            } else if (person.supervisor_id && supervisorMap[person.supervisor_id]) {
+                teamKey = person.supervisor_id;
+            } else {
+                teamKey = 'no_team';
+            }
+
+            if (!teams[teamKey]) {
+                teams[teamKey] = {
+                    supervisor: supervisorMap[teamKey] || null,
+                    members: [],
+                    totalSales: 0,
+                };
+            }
+
+            if (person.role_name !== 'Supervisor Telesale') {
+                teams[teamKey].members.push(person);
+            }
+            teams[teamKey].totalSales += parseFloat(person.total_sales) || 0;
+
+            grandSales += parseFloat(person.total_sales) || 0;
+            grandReturn += parseFloat(person.returned_amount) || 0;
+        });
+
+        const grandNet = grandSales - grandReturn;
+
+        const headers = [
+            'ทีม',
+            'ชื่อพนักงาน',
+            'ตำแหน่ง',
+            'ยอดขายรวม (บาท)',
+            'ออเดอร์ตีกลับ',
+            'ยอดตีกลับ (บาท)',
+            'ยอดขายสุทธิ (บาท)',
+            'ยกเลิก-ก่อนเข้าระบบ (บาท)',
+            'ยกเลิก-หลังเข้าระบบ (บาท)',
+            'ปฏิเสธรับสินค้า (บาท)',
+            'หนี้สูญ (บาท)',
+            'ยอดขายปุ๋ย (บาท)',
+            'ออเดอร์ปุ๋ย',
+            'เฉลี่ยต่อออเดอร์ (ปุ๋ย)',
+            'ยอดขายชีวภัณฑ์ (บาท)',
+            'ออเดอร์ชีวภัณฑ์',
+            'เฉลี่ยต่อออเดอร์ (ชีวภัณฑ์)'
+        ];
+
+        // Helper to extract cancellation type amount
+        const getCancelTypeAmt = (person, typeId) => {
+            const byType = person.cancelled_by_type || {};
+            if (typeof byType === 'object' && byType[typeId]) {
+                return byType[typeId].amount || 0;
+            }
+            return 0;
+        };
+
+        const rows = [];
+        
+        // Ensure each row has 21 cols (0-20).
+        const createRow = (dataArr) => {
+            const arr = new Array(21).fill('');
+            dataArr.forEach((val, index) => {
+                if (val !== undefined) arr[index] = val;
+            });
+            return arr;
+        };
+
+        const sortedTeams = Object.entries(teams)
+            .sort(([, a], [, b]) => b.totalSales - a.totalSales);
+
+        sortedTeams.forEach(([teamKey, team], teamIndex) => {
+            if (teamIndex > 0) {
+                // Empty row between teams
+                rows.push(createRow([]));
+            }
+
+            // Headers for each team
+            const headerRow = createRow(headers);
+            if (teamIndex === 0) {
+                headerRow[18] = '"ยอดขายรวม (บาท)"';
+                headerRow[19] = '"ยอดตีกลับ (บาท)"';
+                headerRow[20] = '"ยอดขายสุทธิ (บาท)"';
+            }
+            rows.push(headerRow);
+
+            const teamName = team.supervisor ? `ทีม ${team.supervisor.salesperson_name}` : 'ไม่มีทีม';
+
+            let tSales = 0, tRet = 0, tRetCount = 0, tNet = 0, tCan1 = 0, tCan2 = 0, tCan3 = 0, tBadDebt = 0, tFertS = 0, tFertO = 0, tBioS = 0, tBioO = 0;
+
+            const addRow = (p, roleLabel, isFirstRow) => {
+                const netSales = (parseFloat(p.total_sales) || 0) - (parseFloat(p.returned_amount) || 0);
+                const fertAvg = parseInt(p.fertilizer_orders) > 0 ? (parseFloat(p.fertilizer_sales) / parseInt(p.fertilizer_orders)) : 0;
+                const bioAvg = parseInt(p.bio_orders) > 0 ? (parseFloat(p.bio_sales) / parseInt(p.bio_orders)) : 0;
+
+                const can1 = getCancelTypeAmt(p, 1);
+                const can2 = getCancelTypeAmt(p, 2);
+                const can3 = getCancelTypeAmt(p, 3);
+
+                tSales += parseFloat(p.total_sales) || 0;
+                tRetCount += parseInt(p.returned_count) || 0;
+                tRet += parseFloat(p.returned_amount) || 0;
+                tNet += netSales;
+                tCan1 += can1;
+                tCan2 += can2;
+                tCan3 += can3;
+                tBadDebt += parseFloat(p.baddebt_amount) || 0;
+                tFertS += parseFloat(p.fertilizer_sales) || 0;
+                tFertO += parseInt(p.fertilizer_orders) || 0;
+                tBioS += parseFloat(p.bio_sales) || 0;
+                tBioO += parseInt(p.bio_orders) || 0;
+
+                const rowData = [
+                    `"${teamName}"`,
+                    `"${p.salesperson_name || ''}"`,
+                    `"${roleLabel}"`,
+                    parseFloat(p.total_sales) || 0,
+                    parseInt(p.returned_count) || 0,
+                    parseFloat(p.returned_amount) || 0,
+                    netSales,
+                    can1,
+                    can2,
+                    can3,
+                    parseFloat(p.baddebt_amount) || 0,
+                    parseFloat(p.fertilizer_sales) || 0,
+                    parseInt(p.fertilizer_orders) || 0,
+                    Math.round(fertAvg),
+                    parseFloat(p.bio_sales) || 0,
+                    parseInt(p.bio_orders) || 0,
+                    Math.round(bioAvg)
+                ];
+
+                const formattedRow = createRow(rowData);
+                if (teamIndex === 0 && isFirstRow) {
+                    formattedRow[18] = grandSales;
+                    formattedRow[19] = grandReturn;
+                    formattedRow[20] = grandNet;
+                }
+                rows.push(formattedRow);
+            };
+
+            let isFirst = true;
+
+            // 1. Add supervisor first
+            if (team.supervisor) {
+                addRow(team.supervisor, 'หัวหน้า', isFirst);
+                isFirst = false;
+            }
+            
+            // 2. Add members
+            const sortedMembers = [...team.members].sort((a, b) => parseFloat(b.total_sales) - parseFloat(a.total_sales));
+            sortedMembers.forEach(m => {
+                addRow(m, m.role_name || '-', isFirst);
+                isFirst = false;
+            });
+
+            // 3. Add total row 
+            const totalFertAvg = tFertO > 0 ? Math.round(tFertS / tFertO) : 0;
+            const totalBioAvg = tBioO > 0 ? Math.round(tBioS / tBioO) : 0;
+
+            const totalRowData = [
+                '', '', '"ผลรวม"',
+                tSales, tRetCount, tRet, tNet, tCan1, tCan2, tCan3, tBadDebt,
+                tFertS, tFertO, totalFertAvg,
+                tBioS, tBioO, totalBioAvg
+            ];
+            rows.push(createRow(totalRowData));
+        });
+
+        // Add BOM for Thai characters
+        const csvContent = '\uFEFF' + rows.map(r => r.join(',')).join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', `Telesale_Report_${year}_${month}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
 
 
     const monthLabel = months.find(m => m.value === month)?.label;
@@ -223,10 +420,15 @@ function SalesReportPage({ user }) {
                         <span className="text-sm">ตั้งเป้า</span>
                     </button>
 
-                    <button className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-white font-bold hover:bg-primary/90 transition-all shadow-sm">
+                    <button 
+                        onClick={handleExport}
+                        className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-white font-bold hover:bg-primary/90 transition-all shadow-sm"
+                    >
                         <span className="material-symbols-outlined text-lg">download</span>
                         <span className="text-sm">ส่งออก</span>
                     </button>
+
+
                 </div>
             </div>
 
@@ -242,24 +444,21 @@ function SalesReportPage({ user }) {
                 </div>
             ) : data && (
                 <>
-                    {/* Main Content - Full Width */}
-                    <div className="space-y-6">
-                        {/* Summary Cards (4 columns) */}
-                        <SummaryTable data={data.summary} prevData={prevMonthData?.summary} totalOrdersDistinct={data.total_orders_distinct} />
+                    {/* Summary Cards - Full Width */}
+                    <SummaryTable data={data.summary} prevData={prevMonthData?.summary} totalOrdersDistinct={data.total_orders_distinct} bySalesperson={data.by_salesperson} prevBySalesperson={prevMonthData?.by_salesperson} />
 
-                        {/* Ranking + Product Breakdown Table */}
-                        <Top10Table
-                            data={data.by_salesperson}
-                            meta={meta}
-                            cancellationTypes={data.cancellation_types}
-                            onViewCancelledOrders={({ userId, userName, cancelTypeId, cancelTypeLabel }) => {
-                                setCancelModal({ open: true, userId, userName, cancelTypeId, cancelTypeLabel });
-                            }}
-                            onViewReturnedOrders={({ userId, userName }) => {
-                                setReturnedModal({ open: true, userId, userName });
-                            }}
-                        />
-                    </div>
+                    {/* Team-based Sales Cards */}
+                    <TeamSalesCards
+                        data={data.by_salesperson}
+                        meta={meta}
+                        cancellationTypes={data.cancellation_types}
+                        onViewCancelledOrders={({ userId, userName, cancelTypeId, cancelTypeLabel }) => {
+                            setCancelModal({ open: true, userId, userName, cancelTypeId, cancelTypeLabel });
+                        }}
+                        onViewReturnedOrders={({ userId, userName }) => {
+                            setReturnedModal({ open: true, userId, userName });
+                        }}
+                    />
                 </>
             )}
 

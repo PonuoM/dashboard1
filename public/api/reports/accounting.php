@@ -100,20 +100,84 @@ try {
     $response['summary']['cod_received'] = floatval($r['total_received']);
     $response['summary']['cod_diff'] = floatval($r['total_diff']);
 
-    // Unreconciled statements (filtered by year)
-    $year_start = sprintf('%04d-01-01 00:00:00', $year);
-    $year_end = sprintf('%04d-01-01 00:00:00', $year + 1);
-    $sql = "SELECT COUNT(*) as cnt, COALESCE(SUM(amount), 0) as total
-            FROM statement_logs WHERE statement_reconcile_logs IS NULL
-            AND created_at >= ? AND created_at < ?";
+    // Statement matching stats (using statement_reconcile_logs.statement_log_id FK)
+    $sql = "SELECT 
+            COUNT(DISTINCT sl.id) as total_statements,
+            COUNT(DISTINCT srl.statement_log_id) as matched_statements,
+            COUNT(DISTINCT CASE WHEN srl.id IS NULL THEN sl.id END) as unmatched_statements,
+            COALESCE(SUM(CASE WHEN srl.id IS NULL THEN sl.amount ELSE 0 END), 0) as unmatched_amount
+            FROM statement_logs sl
+            INNER JOIN statement_batchs sb ON sl.batch_id = sb.id
+            LEFT JOIN statement_reconcile_logs srl ON srl.statement_log_id = sl.id
+            WHERE sl.created_at >= ? AND sl.created_at < ?";
+    if ($company_id > 0) $sql .= " AND sb.company_id = $company_id";
     $stmt = $conn->prepare($sql);
-    $stmt->bind_param("ss", $year_start, $year_end);
+    $stmt->bind_param("ss", $start_date, $end_date);
     $stmt->execute();
     $r = $stmt->get_result()->fetch_assoc();
     $stmt->close();
-    $response['summary']['unreconciled_count'] = intval($r['cnt']);
-    $response['summary']['unreconciled_amount'] = floatval($r['total']);
+    $response['summary']['statement_total'] = intval($r['total_statements']);
+    $response['summary']['statement_matched'] = intval($r['matched_statements']);
+    $response['summary']['unreconciled_count'] = intval($r['unmatched_statements']);
+    $response['summary']['unreconciled_amount'] = floatval($r['unmatched_amount']);
 
+    // Statement matching breakdown by payment method
+    $sql = "SELECT 
+            COALESCE(o.payment_method, 'ไม่ระบุ') as payment_method,
+            COUNT(DISTINCT srl.id) as reconcile_count,
+            COUNT(DISTINCT srl.statement_log_id) as statement_count,
+            COALESCE(SUM(srl.confirmed_amount), 0) as total_amount
+            FROM statement_reconcile_logs srl
+            INNER JOIN statement_reconcile_batches srb ON srl.batch_id = srb.id
+            LEFT JOIN orders o ON srl.order_id = o.id
+            WHERE srl.created_at >= ? AND srl.created_at < ?";
+    if ($company_id > 0) $sql .= " AND srb.company_id = $company_id";
+    $sql .= " GROUP BY o.payment_method ORDER BY reconcile_count DESC";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("ss", $start_date, $end_date);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $response['statement_by_payment'] = [];
+    while ($row = $result->fetch_assoc()) {
+        $response['statement_by_payment'][] = [
+            'payment_method' => $row['payment_method'],
+            'reconcile_count' => intval($row['reconcile_count']),
+            'statement_count' => intval($row['statement_count']),
+            'total_amount' => floatval($row['total_amount']),
+        ];
+    }
+    $stmt->close();
+
+    // Statement matching breakdown by bank
+    $sql = "SELECT 
+            COALESCE(sl.bank_display_name, 'ไม่ระบุ') as bank_name,
+            COUNT(DISTINCT sl.id) as total_statements,
+            COUNT(DISTINCT srl.statement_log_id) as matched_statements,
+            COUNT(DISTINCT CASE WHEN srl.id IS NULL THEN sl.id END) as unmatched_statements,
+            COALESCE(SUM(DISTINCT CASE WHEN srl.id IS NULL THEN sl.amount ELSE 0 END), 0) as unmatched_amount
+            FROM statement_logs sl
+            INNER JOIN statement_batchs sb ON sl.batch_id = sb.id
+            LEFT JOIN statement_reconcile_logs srl ON srl.statement_log_id = sl.id
+            WHERE sl.created_at >= ? AND sl.created_at < ?";
+    if ($company_id > 0) $sql .= " AND sb.company_id = $company_id";
+    $sql .= " GROUP BY COALESCE(sl.bank_display_name, 'ไม่ระบุ') ORDER BY total_statements DESC";
+    $stmt = $conn->prepare($sql);
+    $response['statement_by_bank'] = [];
+    if ($stmt) {
+        $stmt->bind_param("ss", $start_date, $end_date);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        while ($row = $result->fetch_assoc()) {
+            $response['statement_by_bank'][] = [
+                'bank_name' => $row['bank_name'],
+                'total' => intval($row['total_statements']),
+                'matched' => intval($row['matched_statements']),
+                'unmatched' => intval($row['unmatched_statements']),
+                'unmatched_amount' => floatval($row['unmatched_amount']),
+            ];
+        }
+        $stmt->close();
+    }
     // ========== 2. BY PERSON: STATEMENT UPLOADS ==========
     $sql = "SELECT sb.user_id, u.first_name, 
             COUNT(*) as batch_count, SUM(sb.row_count) as total_rows,
@@ -250,15 +314,17 @@ try {
         'orders_preapproved_amount' => 0,
     ];
 
-    // Statement reconcile logs: confirmed vs unconfirmed (within period)
+    // Statement reconcile status: based on statement upload date (sl.created_at)
+    // Shows: for statements uploaded in this month, how many are confirmed/unconfirmed
     $sql = "SELECT 
-            SUM(CASE WHEN srl.confirmed_action = 'Confirmed' THEN 1 ELSE 0 END) as confirmed,
-            SUM(CASE WHEN srl.confirmed_action IS NULL THEN 1 ELSE 0 END) as unconfirmed,
-            COALESCE(SUM(CASE WHEN srl.confirmed_action IS NULL THEN srl.statement_amount ELSE 0 END), 0) as unconfirmed_amount
-            FROM statement_reconcile_logs srl
-            INNER JOIN statement_reconcile_batches srb ON srl.batch_id = srb.id
-            WHERE srl.created_at >= ? AND srl.created_at < ?";
-    if ($company_id > 0) $sql .= " AND srb.company_id = $company_id";
+            COUNT(DISTINCT CASE WHEN srl.confirmed_action = 'Confirmed' THEN srl.id END) as confirmed,
+            COUNT(DISTINCT CASE WHEN srl.id IS NOT NULL AND (srl.confirmed_action IS NULL OR srl.confirmed_action != 'Confirmed') THEN srl.id END) as unconfirmed,
+            COALESCE(SUM(CASE WHEN srl.id IS NOT NULL AND (srl.confirmed_action IS NULL OR srl.confirmed_action != 'Confirmed') THEN srl.statement_amount ELSE 0 END), 0) as unconfirmed_amount
+            FROM statement_logs sl
+            INNER JOIN statement_batchs sb ON sl.batch_id = sb.id
+            LEFT JOIN statement_reconcile_logs srl ON srl.statement_log_id = sl.id
+            WHERE sl.created_at >= ? AND sl.created_at < ?";
+    if ($company_id > 0) $sql .= " AND sb.company_id = $company_id";
     $stmt = $conn->prepare($sql);
     if ($stmt) { $stmt->bind_param("ss", $start_date, $end_date); $stmt->execute(); $r = $stmt->get_result()->fetch_assoc(); $stmt->close();
         $response['unmatched']['statements_confirmed'] = intval($r['confirmed']);
@@ -266,11 +332,13 @@ try {
         $response['unmatched']['statements_unconfirmed_amount'] = floatval($r['unconfirmed_amount']);
     }
 
-    // Statement logs: uploaded but never matched at all (within period)
-    $sql = "SELECT COUNT(*) as cnt, COALESCE(SUM(sl.amount), 0) as total 
+    // Statement logs: uploaded but never matched (using statement_log_id FK)
+    $sql = "SELECT COUNT(DISTINCT sl.id) as cnt, 
+            COALESCE(SUM(CASE WHEN srl.id IS NULL THEN sl.amount ELSE 0 END), 0) as total 
             FROM statement_logs sl
             INNER JOIN statement_batchs sb ON sl.batch_id = sb.id
-            WHERE sl.statement_reconcile_logs IS NULL AND sl.created_at >= ? AND sl.created_at < ?";
+            LEFT JOIN statement_reconcile_logs srl ON srl.statement_log_id = sl.id
+            WHERE srl.id IS NULL AND sl.created_at >= ? AND sl.created_at < ?";
     if ($company_id > 0) $sql .= " AND sb.company_id = $company_id";
     $stmt = $conn->prepare($sql);
     if ($stmt) { $stmt->bind_param("ss", $start_date, $end_date); $stmt->execute(); $r = $stmt->get_result()->fetch_assoc(); $stmt->close();
@@ -278,18 +346,30 @@ try {
         $response['unmatched']['statement_logs_unmatched_amount'] = floatval($r['total']);
     }
 
-    // Orders: Delivered (done) vs PreApproved (waiting accounting) within period
-    $sql = "SELECT 
-            SUM(CASE WHEN order_status = 'Delivered' THEN 1 ELSE 0 END) as delivered,
-            SUM(CASE WHEN order_status = 'PreApproved' THEN 1 ELSE 0 END) as preapproved,
-            COALESCE(SUM(CASE WHEN order_status = 'PreApproved' THEN total_amount ELSE 0 END), 0) as preapproved_amount
+    // Orders: full status breakdown for this month
+    $sql = "SELECT order_status, COUNT(*) as cnt, 
+            COALESCE(SUM(total_amount), 0) as total_amount
             FROM orders WHERE order_date >= ? AND order_date < ?";
     if ($company_id > 0) $sql .= " AND company_id = $company_id";
+    $sql .= " GROUP BY order_status ORDER BY cnt DESC";
     $stmt = $conn->prepare($sql);
-    if ($stmt) { $stmt->bind_param("ss", $start_date, $end_date); $stmt->execute(); $r = $stmt->get_result()->fetch_assoc(); $stmt->close();
-        $response['unmatched']['orders_delivered'] = intval($r['delivered']);
-        $response['unmatched']['orders_preapproved'] = intval($r['preapproved']);
-        $response['unmatched']['orders_preapproved_amount'] = floatval($r['preapproved_amount']);
+    if ($stmt) { $stmt->bind_param("ss", $start_date, $end_date); $stmt->execute(); $result = $stmt->get_result();
+        $response['unmatched']['order_status_detail'] = [];
+        while ($row = $result->fetch_assoc()) {
+            $status = $row['order_status'];
+            $cnt = intval($row['cnt']);
+            $amt = floatval($row['total_amount']);
+            $response['unmatched']['order_status_detail'][] = [
+                'status' => $status, 'count' => $cnt, 'amount' => $amt,
+            ];
+            if ($status === 'Delivered') {
+                $response['unmatched']['orders_delivered'] = $cnt;
+            } elseif ($status === 'PreApproved') {
+                $response['unmatched']['orders_preapproved'] = $cnt;
+                $response['unmatched']['orders_preapproved_amount'] = $amt;
+            }
+        }
+        $stmt->close();
     }
 
     echo json_encode(['success' => true, 'data' => $response, 'filters' => [

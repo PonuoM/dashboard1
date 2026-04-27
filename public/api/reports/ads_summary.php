@@ -24,12 +24,13 @@ $pages_sql = "
         p.id AS page_id,
         p.name AS page_name,
         p.sell_product_type,
+        p.active,
         GROUP_CONCAT(DISTINCT CONCAT(u.first_name, ' ', u.last_name) SEPARATOR ', ') AS assigned_users
     FROM pages p
     LEFT JOIN marketing_user_page mup ON mup.page_id = p.id
     LEFT JOIN users u ON u.id = mup.user_id
     WHERE p.company_id = ?
-    GROUP BY p.id, p.name, p.sell_product_type
+    GROUP BY p.id, p.name, p.sell_product_type, p.active
     ORDER BY p.name
 ";
 
@@ -45,6 +46,7 @@ while ($row = $result->fetch_assoc()) {
         'page_name' => $row['page_name'],
         'sell_product_type' => $row['sell_product_type'] ?? '-',
         'assigned_user' => $row['assigned_users'] ?? '-',
+        'active' => isset($row['active']) ? intval($row['active']) : 1,
     ];
 }
 $stmt->close();
@@ -158,6 +160,11 @@ $totals = [
 foreach ($pages as $page_id => $page) {
     $ads = $ads_data[$page_id] ?? ['ads_cost' => 0, 'clicks' => 0];
     $sales = $sales_data[$page_id] ?? ['order_count' => 0, 'customer_count' => 0, 'total_sales' => 0, 'new_sales' => 0, 'reorder_sales' => 0];
+
+    // Skip inactive pages that have no sales and no ads cost in this selected month
+    if ($page['active'] == 0 && floatval($sales['total_sales']) == 0 && floatval($ads['ads_cost']) == 0) {
+        continue;
+    }
 
     $row = [
         'page_id' => $page_id,

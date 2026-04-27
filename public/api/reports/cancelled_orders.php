@@ -98,6 +98,7 @@ try {
             AND o.order_date < ?
             AND (p.category LIKE '%ปุ๋ย%' OR p.category = 'ชีวภัณฑ์')
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND (oi.is_promotion_parent = 0 OR oi.is_promotion_parent IS NULL)
             {$status_filter}
             {$type_filter}
         GROUP BY o.id, o.order_date, o.order_status, c.first_name, c.phone, oc.notes
