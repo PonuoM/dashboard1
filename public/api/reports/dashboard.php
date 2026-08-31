@@ -5,6 +5,7 @@
  */
 
 require_once __DIR__ . '/../helpers/product_names.php';
+require_once __DIR__ . '/../helpers/sales_buckets.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
@@ -190,7 +191,18 @@ try {
 
     // =============================================
     // 2.5 Department Product Details (with Status Breakdown)
+    //
+    // ใช้ sales_buckets helper ชุดเดียวกับตารางรายบุคคล (section 2.6)
+    // เพื่อให้ยอด สำเร็จ/ตีกลับ/อื่นๆ ของสองตารางนี้นิยามตรงกัน
     // =============================================
+    $box_join_dd    = sales_box_join();
+    $b_dd_delivered = sales_bucket('delivered');
+    $b_dd_returned  = sales_bucket('returned');
+    // ตารางนี้มีแค่ 3 คอลัมน์ และ total_sales รวมทุกสถานะที่ไม่ใช่ Cancelled
+    // จึงต้องให้ อื่นๆ เป็นถังรองรับที่เหลือทั้งหมด (รวม BadDebt ที่ไม่มีคอลัมน์ของตัวเอง)
+    // เพื่อให้ สำเร็จ + ตีกลับ + อื่นๆ = total_sales เสมอ
+    $b_dd_other     = "(NOT $b_dd_delivered AND NOT $b_dd_returned)";
+
     $dept_detail_sql = "
         SELECT 
             CASE 
@@ -203,16 +215,17 @@ try {
             p.category AS product_category,
             SUM(oi.quantity) AS total_quantity,
             COALESCE(SUM(oi.net_total), 0) AS total_sales,
-            SUM(CASE WHEN o.order_status = 'Delivered' THEN oi.quantity ELSE 0 END) AS delivered_qty,
-            COALESCE(SUM(CASE WHEN o.order_status = 'Delivered' THEN oi.net_total ELSE 0 END), 0) AS delivered_sales,
-            SUM(CASE WHEN o.order_status = 'Returned' THEN oi.quantity ELSE 0 END) AS returned_qty,
-            COALESCE(SUM(CASE WHEN o.order_status = 'Returned' THEN oi.net_total ELSE 0 END), 0) AS returned_sales,
-            SUM(CASE WHEN o.order_status NOT IN ('Delivered', 'Returned', 'Cancelled') THEN oi.quantity ELSE 0 END) AS other_qty,
-            COALESCE(SUM(CASE WHEN o.order_status NOT IN ('Delivered', 'Returned', 'Cancelled') THEN oi.net_total ELSE 0 END), 0) AS other_sales
+            SUM(CASE WHEN $b_dd_delivered THEN oi.quantity ELSE 0 END) AS delivered_qty,
+            COALESCE(SUM(CASE WHEN $b_dd_delivered THEN oi.net_total ELSE 0 END), 0) AS delivered_sales,
+            SUM(CASE WHEN $b_dd_returned THEN oi.quantity ELSE 0 END) AS returned_qty,
+            COALESCE(SUM(CASE WHEN $b_dd_returned THEN oi.net_total ELSE 0 END), 0) AS returned_sales,
+            SUM(CASE WHEN $b_dd_other THEN oi.quantity ELSE 0 END) AS other_qty,
+            COALESCE(SUM(CASE WHEN $b_dd_other THEN oi.net_total ELSE 0 END), 0) AS other_sales
         FROM orders o
         INNER JOIN order_items oi ON o.id = oi.parent_order_id
         INNER JOIN users u ON COALESCE(oi.creator_id, o.creator_id) = u.id
         LEFT JOIN products p ON oi.product_id = p.id
+        $box_join_dd
         WHERE 
             o.company_id = ?
             AND $date_condition
@@ -251,7 +264,32 @@ try {
 
     // =============================================
     // 2.6 Department Salesperson Details (with Status Breakdown)
+    //
+    // จัดกลุ่มด้วย sales_buckets helper ซึ่งแยกยอดตีกลับที่ระดับกล่อง
+    // ออเดอร์ที่ตีกลับบางกล่องจะกระจายยอดลงทั้ง returned และ delivered/other
+    // ตามกล่องจริง จึงปรากฏในหลายคอลัมน์พร้อมกัน (ยอดบวกกันได้ จำนวนบวกไม่ได้)
     // =============================================
+    $box_join    = sales_box_join();
+    $b_total     = sales_bucket('total');
+    $b_delivered = sales_bucket('delivered');
+    $b_returned  = sales_bucket('returned');
+    $b_cancelled = sales_bucket('cancelled');
+    $b_baddebt   = sales_bucket('baddebt');
+    $b_other     = sales_bucket('other');
+
+    $r_good      = sales_return_reason('good');
+    $r_damaged   = sales_return_reason('damaged');
+    $r_returning = sales_return_reason('returning');
+    $r_lost      = sales_return_reason('lost');
+    $r_other     = sales_return_reason('other');
+
+    // ค้างชำระ = ส่งสำเร็จแต่ยังเก็บเงินไม่ครบ จึงเป็นสับเซตของคอลัมน์ สำเร็จ
+    // ต้องกันกล่องที่ตีกลับออก ไม่งั้นของที่ลูกค้าคืนแล้วจะถูกนับเป็นหนี้ค้าง
+    $unpaid_cond = "COALESCE(o.order_status, '') = 'Delivered'"
+        . " AND COALESCE(obx.status, '') <> 'RETURNED'"
+        . " AND COALESCE(o.amount_paid, 0) < COALESCE(o.total_amount, 0)"
+        . " AND COALESCE(o.payment_status, '') <> 'Approved'";
+
     $salesperson_sql = "
         SELECT 
             CASE 
@@ -262,66 +300,60 @@ try {
             u.id AS user_id,
             u.first_name,
             u.last_name,
-            COUNT(DISTINCT CASE WHEN o.order_status NOT IN ('Returned', 'Cancelled', 'BadDebt') THEN o.id END) AS total_orders,
-            COALESCE(SUM(CASE WHEN o.order_status NOT IN ('Returned', 'Cancelled', 'BadDebt') THEN oi.net_total ELSE 0 END), 0) AS total_sales,
+            COUNT(DISTINCT CASE WHEN $b_total THEN o.id END) AS total_orders,
+            COALESCE(SUM(CASE WHEN $b_total THEN oi.net_total ELSE 0 END), 0) AS total_sales,
             
-            COUNT(DISTINCT CASE WHEN o.order_status = 'Delivered' THEN o.id END) AS delivered_orders,
-            COALESCE(SUM(CASE WHEN o.order_status = 'Delivered' THEN oi.net_total ELSE 0 END), 0) AS delivered_sales,
+            COUNT(DISTINCT CASE WHEN $b_delivered THEN o.id END) AS delivered_orders,
+            COALESCE(SUM(CASE WHEN $b_delivered THEN oi.net_total ELSE 0 END), 0) AS delivered_sales,
             
-            COUNT(DISTINCT CASE WHEN o.order_status = 'Returned' THEN o.id END) AS returned_orders,
-            COALESCE(SUM(CASE WHEN o.order_status = 'Returned' THEN oi.net_total ELSE 0 END), 0) AS returned_sales,
+            COUNT(DISTINCT CASE WHEN $b_returned THEN o.id END) AS returned_orders,
+            COALESCE(SUM(CASE WHEN $b_returned THEN oi.net_total ELSE 0 END), 0) AS returned_sales,
             
-            COUNT(DISTINCT CASE WHEN o.order_status = 'Returned' AND ob.return_status = 'good' THEN o.id END) AS returned_good_orders,
-            COALESCE(SUM(CASE WHEN o.order_status = 'Returned' AND ob.return_status = 'good' THEN oi.net_total ELSE 0 END), 0) AS returned_good_sales,
+            COUNT(DISTINCT CASE WHEN $b_returned AND $r_good THEN o.id END) AS returned_good_orders,
+            COALESCE(SUM(CASE WHEN $b_returned AND $r_good THEN oi.net_total ELSE 0 END), 0) AS returned_good_sales,
             
-            COUNT(DISTINCT CASE WHEN o.order_status = 'Returned' AND ob.return_status = 'damaged' THEN o.id END) AS returned_damaged_orders,
-            COALESCE(SUM(CASE WHEN o.order_status = 'Returned' AND ob.return_status = 'damaged' THEN oi.net_total ELSE 0 END), 0) AS returned_damaged_sales,
+            COUNT(DISTINCT CASE WHEN $b_returned AND $r_damaged THEN o.id END) AS returned_damaged_orders,
+            COALESCE(SUM(CASE WHEN $b_returned AND $r_damaged THEN oi.net_total ELSE 0 END), 0) AS returned_damaged_sales,
             
-            COUNT(DISTINCT CASE WHEN o.order_status = 'Returned' AND ob.return_status = 'returning' THEN o.id END) AS returned_returning_orders,
-            COALESCE(SUM(CASE WHEN o.order_status = 'Returned' AND ob.return_status = 'returning' THEN oi.net_total ELSE 0 END), 0) AS returned_returning_sales,
+            COUNT(DISTINCT CASE WHEN $b_returned AND $r_returning THEN o.id END) AS returned_returning_orders,
+            COALESCE(SUM(CASE WHEN $b_returned AND $r_returning THEN oi.net_total ELSE 0 END), 0) AS returned_returning_sales,
             
-            COUNT(DISTINCT CASE WHEN o.order_status = 'Returned' AND ob.return_status = 'lost' THEN o.id END) AS returned_lost_orders,
-            COALESCE(SUM(CASE WHEN o.order_status = 'Returned' AND ob.return_status = 'lost' THEN oi.net_total ELSE 0 END), 0) AS returned_lost_sales,
+            COUNT(DISTINCT CASE WHEN $b_returned AND $r_lost THEN o.id END) AS returned_lost_orders,
+            COALESCE(SUM(CASE WHEN $b_returned AND $r_lost THEN oi.net_total ELSE 0 END), 0) AS returned_lost_sales,
             
-            COUNT(DISTINCT CASE WHEN o.order_status = 'Returned' AND COALESCE(ob.return_status, '') NOT IN ('good', 'damaged', 'returning', 'lost') THEN o.id END) AS returned_other_orders,
-            COALESCE(SUM(CASE WHEN o.order_status = 'Returned' AND COALESCE(ob.return_status, '') NOT IN ('good', 'damaged', 'returning', 'lost') THEN oi.net_total ELSE 0 END), 0) AS returned_other_sales,
+            COUNT(DISTINCT CASE WHEN $b_returned AND $r_other THEN o.id END) AS returned_other_orders,
+            COALESCE(SUM(CASE WHEN $b_returned AND $r_other THEN oi.net_total ELSE 0 END), 0) AS returned_other_sales,
             
-            COUNT(DISTINCT CASE WHEN o.order_status = 'Cancelled' THEN o.id END) AS cancelled_orders,
-            COALESCE(SUM(CASE WHEN o.order_status = 'Cancelled' THEN oi.net_total ELSE 0 END), 0) AS cancelled_sales,
+            COUNT(DISTINCT CASE WHEN $b_cancelled THEN o.id END) AS cancelled_orders,
+            COALESCE(SUM(CASE WHEN $b_cancelled THEN oi.net_total ELSE 0 END), 0) AS cancelled_sales,
             
-            COUNT(DISTINCT CASE WHEN o.order_status = 'Cancelled' AND COALESCE(oc.cancellation_type_id, 0) = 1 THEN o.id END) AS cancelled_type1_orders,
-            COALESCE(SUM(CASE WHEN o.order_status = 'Cancelled' AND COALESCE(oc.cancellation_type_id, 0) = 1 THEN oi.net_total ELSE 0 END), 0) AS cancelled_type1_sales,
+            COUNT(DISTINCT CASE WHEN $b_cancelled AND COALESCE(oc.cancellation_type_id, 0) = 1 THEN o.id END) AS cancelled_type1_orders,
+            COALESCE(SUM(CASE WHEN $b_cancelled AND COALESCE(oc.cancellation_type_id, 0) = 1 THEN oi.net_total ELSE 0 END), 0) AS cancelled_type1_sales,
             
-            COUNT(DISTINCT CASE WHEN o.order_status = 'Cancelled' AND COALESCE(oc.cancellation_type_id, 0) = 2 THEN o.id END) AS cancelled_type2_orders,
-            COALESCE(SUM(CASE WHEN o.order_status = 'Cancelled' AND COALESCE(oc.cancellation_type_id, 0) = 2 THEN oi.net_total ELSE 0 END), 0) AS cancelled_type2_sales,
+            COUNT(DISTINCT CASE WHEN $b_cancelled AND COALESCE(oc.cancellation_type_id, 0) = 2 THEN o.id END) AS cancelled_type2_orders,
+            COALESCE(SUM(CASE WHEN $b_cancelled AND COALESCE(oc.cancellation_type_id, 0) = 2 THEN oi.net_total ELSE 0 END), 0) AS cancelled_type2_sales,
             
-            COUNT(DISTINCT CASE WHEN o.order_status = 'Cancelled' AND COALESCE(oc.cancellation_type_id, 0) = 3 THEN o.id END) AS cancelled_type3_orders,
-            COALESCE(SUM(CASE WHEN o.order_status = 'Cancelled' AND COALESCE(oc.cancellation_type_id, 0) = 3 THEN oi.net_total ELSE 0 END), 0) AS cancelled_type3_sales,
+            COUNT(DISTINCT CASE WHEN $b_cancelled AND COALESCE(oc.cancellation_type_id, 0) = 3 THEN o.id END) AS cancelled_type3_orders,
+            COALESCE(SUM(CASE WHEN $b_cancelled AND COALESCE(oc.cancellation_type_id, 0) = 3 THEN oi.net_total ELSE 0 END), 0) AS cancelled_type3_sales,
             
-            COUNT(DISTINCT CASE WHEN o.order_status = 'BadDebt' THEN o.id END) AS baddebt_orders,
-            COALESCE(SUM(CASE WHEN o.order_status = 'BadDebt' THEN oi.net_total ELSE 0 END), 0) AS baddebt_sales,
+            COUNT(DISTINCT CASE WHEN $b_baddebt THEN o.id END) AS baddebt_orders,
+            COALESCE(SUM(CASE WHEN $b_baddebt THEN oi.net_total ELSE 0 END), 0) AS baddebt_sales,
 
-            COUNT(DISTINCT CASE WHEN o.order_status = 'Delivered' AND COALESCE(o.amount_paid, 0) < COALESCE(o.total_amount, 0) AND COALESCE(o.payment_status, '') <> 'Approved' THEN o.id END) AS unpaid_orders,
+            COUNT(DISTINCT CASE WHEN $unpaid_cond THEN o.id END) AS unpaid_orders,
             COALESCE(SUM(CASE
-                WHEN o.order_status = 'Delivered'
-                 AND COALESCE(o.amount_paid, 0) < COALESCE(o.total_amount, 0)
+                WHEN $unpaid_cond
                  AND COALESCE(o.total_amount, 0) > 0
-                 AND COALESCE(o.payment_status, '') <> 'Approved'
                 THEN oi.net_total * (COALESCE(o.total_amount, 0) - COALESCE(o.amount_paid, 0)) / COALESCE(o.total_amount, 0)
                 ELSE 0
             END), 0) AS unpaid_sales,
 
-            COUNT(DISTINCT CASE WHEN o.order_status NOT IN ('Delivered', 'Returned', 'Cancelled', 'BadDebt') THEN o.id END) AS other_orders,
-            COALESCE(SUM(CASE WHEN o.order_status NOT IN ('Delivered', 'Returned', 'Cancelled', 'BadDebt') THEN oi.net_total ELSE 0 END), 0) AS other_sales
+            COUNT(DISTINCT CASE WHEN $b_other THEN o.id END) AS other_orders,
+            COALESCE(SUM(CASE WHEN $b_other THEN oi.net_total ELSE 0 END), 0) AS other_sales
         FROM orders o
         INNER JOIN order_items oi ON o.id = oi.parent_order_id
         INNER JOIN users u ON COALESCE(oi.creator_id, o.creator_id) = u.id
         LEFT JOIN order_cancellations oc ON o.id = oc.order_id
-        LEFT JOIN (
-            SELECT order_id, MAX(return_status) as return_status 
-            FROM order_boxes 
-            GROUP BY order_id
-        ) ob ON o.id = ob.order_id
+        $box_join
         WHERE 
             o.company_id = ?
             AND $date_condition

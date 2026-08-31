@@ -3,6 +3,9 @@ import { CustomSelect, MultiSelect, DateRangeFilter } from '../../components/UI'
 import useDateRange from '../../hooks/useDateRange';
 import OtherOrdersModal from '../../components/Modals/OtherOrdersModal';
 
+// ยอดตีกลับแยกที่ระดับกล่อง ออเดอร์ที่คืนบางกล่องจึงมีของอยู่หลายช่องพร้อมกัน
+const PARTIAL_RETURN_HINT = 'ยอดแยกตามกล่อง: ออเดอร์ที่ตีกลับบางกล่องจะมียอดอยู่ทั้งช่อง ตีกลับ และ สำเร็จ/อื่นๆ ตามกล่องจริง คอลัมน์ "ยอด" บวกกันได้ แต่ "จำนวน" นับออเดอร์ที่มีของในช่องนั้นอย่างน้อย 1 กล่อง จึงบวกกันเกินจำนวนออเดอร์จริง';
+
 function DashboardPage({ user }) {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -687,7 +690,7 @@ function DashboardPage({ user }) {
 
                                         {/* Right Card: Status Breakdown */}
                                         <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-                                            <div className="flex items-center justify-center gap-2 py-2.5 px-4 bg-gray-50/80 border-b border-gray-100">
+                                            <div className="flex items-center justify-center gap-2 py-2.5 px-4 bg-gray-50/80 border-b border-gray-100" title={PARTIAL_RETURN_HINT}>
                                                 <span className="material-symbols-outlined text-sm text-blue-500">local_shipping</span>
                                                 <h4 className="text-xs font-bold text-gray-600 uppercase tracking-wider">สถานะจัดส่ง</h4>
                                                 <div className="flex items-center gap-3 ml-3">
@@ -793,14 +796,15 @@ function DashboardPage({ user }) {
                                                 <th rowSpan={(expandedColumns.returned || expandedColumns.cancelled) ? "3" : "2"} className="py-2 px-3 font-semibold text-gray-400 w-8 border-r border-gray-100 text-center align-middle">#</th>
                                                 <th rowSpan={(expandedColumns.returned || expandedColumns.cancelled) ? "3" : "2"} className="py-2 px-3 font-semibold text-gray-600 border-r border-gray-100 align-middle">พนักงาน</th>
                                                 
-                                                <th colSpan="2" rowSpan={(expandedColumns.returned || expandedColumns.cancelled) ? "2" : "1"} className="py-1 font-bold text-center text-primary bg-primary/5 border-b border-r-2 border-gray-200 align-middle">💰 รวม (ไม่รวมตีกลับ/ยกเลิก/หนี้สูญ)</th>
-                                                <th colSpan="2" rowSpan={(expandedColumns.returned || expandedColumns.cancelled) ? "2" : "1"} className="py-1 font-bold text-center text-green-700 bg-green-50/60 border-b border-r-2 border-gray-200 align-middle">🟢 สำเร็จ</th>
+                                                <th colSpan="2" rowSpan={(expandedColumns.returned || expandedColumns.cancelled) ? "2" : "1"} className="py-1 font-bold text-center text-primary bg-primary/5 border-b border-r-2 border-gray-200 align-middle" title={PARTIAL_RETURN_HINT}>💰 รวม (ไม่รวมตีกลับ/ยกเลิก/หนี้สูญ)</th>
+                                                <th colSpan="2" rowSpan={(expandedColumns.returned || expandedColumns.cancelled) ? "2" : "1"} className="py-1 font-bold text-center text-green-700 bg-green-50/60 border-b border-r-2 border-gray-200 align-middle" title={PARTIAL_RETURN_HINT}>🟢 สำเร็จ</th>
                                                 
                                                 {/* Returned Group */}
                                                 <th 
                                                     colSpan={expandedColumns.returned ? "12" : "2"} 
                                                     rowSpan={expandedColumns.returned ? "1" : ((expandedColumns.returned || expandedColumns.cancelled) ? "2" : "1")} 
                                                     className={`py-1 font-bold text-center text-red-600 border-b cursor-pointer transition-colors align-middle ${expandedColumns.returned ? 'bg-red-100 border-l-2 border-l-red-400 border-r-2 border-r-red-400' : 'bg-red-50/60 border-l border-l-red-100 border-r-2 border-gray-200 hover:bg-red-200'}`} 
+                                                    title={PARTIAL_RETURN_HINT}
                                                     onClick={() => !expandedColumns.returned && toggleColumnGroup('returned')}
                                                 >
                                                     {expandedColumns.returned ? (
@@ -854,7 +858,7 @@ function DashboardPage({ user }) {
                                                 
                                                 <th colSpan="2" rowSpan={(expandedColumns.returned || expandedColumns.cancelled) ? "2" : "1"} className="py-1 font-bold text-center text-purple-600 bg-purple-50 border-b border-r-2 border-gray-200 align-middle">🟣 หนี้สูญ</th>
                                                 <th colSpan="2" rowSpan={(expandedColumns.returned || expandedColumns.cancelled) ? "2" : "1"} className="py-1 font-bold text-center text-orange-600 bg-orange-50 border-b border-r-2 border-gray-200 align-middle" title="ออเดอร์ส่งสำเร็จแต่ยังไม่ได้รับเงินครบ">💸 ค้างชำระ</th>
-                                                <th colSpan="2" rowSpan={(expandedColumns.returned || expandedColumns.cancelled) ? "2" : "1"} className="py-1 font-bold text-center text-amber-600 bg-amber-50/60 border-b border-amber-100 align-middle">🟡 อื่นๆ</th>
+                                                <th colSpan="2" rowSpan={(expandedColumns.returned || expandedColumns.cancelled) ? "2" : "1"} className="py-1 font-bold text-center text-amber-600 bg-amber-50/60 border-b border-amber-100 align-middle" title={PARTIAL_RETURN_HINT}>🟡 อื่นๆ</th>
                                             </tr>
 
                                             {/* Row 2: Subcategories (Only renders if any group is expanded) */}
@@ -1171,6 +1175,7 @@ function DashboardPage({ user }) {
                 year={year}
                 statusType={statusModal.statusType}
                 cancelTypeId={statusModal.cancelTypeId}
+                dateRangeParams={dateRange.params}
             />
         </div>
     );

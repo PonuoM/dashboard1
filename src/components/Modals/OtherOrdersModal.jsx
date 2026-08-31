@@ -10,7 +10,7 @@ const RETURN_STATUS_MAP = {
 };
 const returnStatusInfo = (s) => RETURN_STATUS_MAP[s] || { label: s || '-', cls: 'bg-gray-100 text-gray-500' };
 
-function OtherOrdersModal({ isOpen, onClose, productId, productName, salespersonId, salespersonName, department, companyId, month, year, statusType = 'other', cancelTypeId }) {
+function OtherOrdersModal({ isOpen, onClose, productId, productName, salespersonId, salespersonName, department, companyId, month, year, statusType = 'other', cancelTypeId, dateRangeParams = '' }) {
     const [loading, setLoading] = useState(true);
     const [data, setData] = useState(null);
     const [error, setError] = useState(null);
@@ -87,7 +87,9 @@ function OtherOrdersModal({ isOpen, onClose, productId, productName, salesperson
         if (salespersonId) params.append('salesperson_id', salespersonId);
         if (cancelTypeId) params.append('cancel_type_id', cancelTypeId);
 
-        fetch(`./api/reports/other_orders.php?${params}`)
+        // dateRangeParams (วันนี้ / เมื่อวาน / กำหนดวัน) มาเป็น query string สำเร็จรูปแล้ว
+        // backend จะให้ค่านี้ override ปี/เดือน เหมือนที่หน้าหลักทำ
+        fetch(`./api/reports/other_orders.php?${params}${dateRangeParams}`)
             .then(res => res.json())
             .then(result => {
                 if (result.success) {
@@ -98,7 +100,7 @@ function OtherOrdersModal({ isOpen, onClose, productId, productName, salesperson
             })
             .catch(() => setError('Connection error'))
             .finally(() => setLoading(false));
-    }, [isOpen, productId, salespersonId, department, companyId, month, year, statusType, cancelTypeId]);
+    }, [isOpen, productId, salespersonId, department, companyId, month, year, statusType, cancelTypeId, dateRangeParams]);
 
     const toggleOrderItems = (orderId) => {
         if (expandedOrder === orderId) {

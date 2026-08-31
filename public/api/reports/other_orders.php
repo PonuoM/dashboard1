@@ -33,6 +33,9 @@ try {
     exit;
 }
 
+require_once __DIR__ . '/../helpers/sales_buckets.php';
+require_once __DIR__ . '/../helpers/date_filter.php';
+
 $company_id = isset($_GET['company_id']) ? intval($_GET['company_id']) : 0;
 $product_id = isset($_GET['product_id']) ? intval($_GET['product_id']) : 0;
 $department = isset($_GET['department']) ? $_GET['department'] : '';
@@ -66,25 +69,51 @@ $year_list = implode(',', $years);
 $year_condition = "AND YEAR(o.order_date) IN ($year_list)";
 $date_condition = "1=1 $month_condition $year_condition";
 
-// Determine status filter
-if ($status_type === 'delivered') {
-    $status_condition = "o.order_status = 'Delivered'";
-} elseif ($status_type === 'returned') {
-    $status_condition = "o.order_status = 'Returned'";
-} elseif ($status_type === 'cancelled') {
-    $status_condition = "o.order_status = 'Cancelled'";
-    if ($cancel_type_id > 0) {
-        $status_condition .= " AND COALESCE(oc.cancellation_type_id, 0) = " . $cancel_type_id;
-    }
-} elseif ($status_type === 'baddebt') {
-    $status_condition = "o.order_status = 'BadDebt'";
-} elseif ($status_type === 'unpaid') {
-    $status_condition = "o.order_status = 'Delivered' AND COALESCE(o.amount_paid, 0) < COALESCE(o.total_amount, 0) AND COALESCE(o.payment_status, '') <> 'Approved'";
-} elseif (in_array($status_type, ['Pending', 'Preparing', 'Shipping', 'Confirmed', 'Packing', 'Processing'])) {
-    $status_condition = "o.order_status = '" . $conn->real_escape_string($status_type) . "'";
-} else {
-    $status_condition = "o.order_status NOT IN ('Delivered', 'Returned', 'Cancelled', 'BadDebt')";
+// ช่วงวันที่ชัดเจน (วันนี้ / เมื่อวาน / กำหนดวัน) — override ปี/เดือน เหมือนที่ dashboard.php ทำ
+// ถ้าไม่ทำตรงนี้ ตัวเลขใน modal จะเป็นของทั้งเดือนขณะที่ตารางเป็นของช่วงวันที่เลือก
+$__r = resolve_date_range();
+if ($__r) {
+    $date_condition = "o.order_date >= '{$__r['start']}' AND o.order_date < '{$__r['end_excl']}'";
 }
+
+/**
+ * เงื่อนไขสถานะของ drill-down ต้องตรงกับ bucket ในตารางบิตต่อบิต
+ * ไม่งั้นคลิกตัวเลขแล้วรายการที่ได้จะไม่ตรงกับยอดที่คลิก
+ *
+ * รับ alias เข้ามาเพราะคิวรีนี้ใช้เงื่อนไขเดียวกันสองที่ (summary และ subquery)
+ * ด้วย alias ต่างกัน
+ */
+function build_status_condition($status_type, $cancel_type_id, $conn, $o = 'o', $ob = 'obx', $oc = 'oc') {
+    if ($status_type === 'delivered') {
+        return sales_bucket('delivered', $o, $ob);
+    }
+    if ($status_type === 'returned') {
+        return sales_bucket('returned', $o, $ob);
+    }
+    if ($status_type === 'cancelled') {
+        $cond = sales_bucket('cancelled', $o, $ob);
+        if ($cancel_type_id > 0) {
+            $cond .= " AND COALESCE($oc.cancellation_type_id, 0) = " . intval($cancel_type_id);
+        }
+        return $cond;
+    }
+    if ($status_type === 'baddebt') {
+        return sales_bucket('baddebt', $o, $ob);
+    }
+    if ($status_type === 'unpaid') {
+        return "COALESCE($o.order_status, '') = 'Delivered'"
+            . " AND COALESCE($ob.status, '') <> 'RETURNED'"
+            . " AND COALESCE($o.amount_paid, 0) < COALESCE($o.total_amount, 0)"
+            . " AND COALESCE($o.payment_status, '') <> 'Approved'";
+    }
+    // drill-down จากการ์ดสรุปสถานะรวม ซึ่งยังนับที่ระดับออเดอร์ล้วน จึงไม่ใส่เงื่อนไขกล่อง
+    if (in_array($status_type, ['Pending', 'Preparing', 'Shipping', 'Confirmed', 'Packing', 'Processing'])) {
+        return "$o.order_status = '" . $conn->real_escape_string($status_type) . "'";
+    }
+    return sales_bucket('other', $o, $ob);
+}
+
+$status_condition = build_status_condition($status_type, $cancel_type_id, $conn, 'o', 'obx', 'oc');
 
 // Department filter
 $dept_condition = "";
@@ -114,6 +143,8 @@ if ($salesperson_id > 0) {
 }
 
 // 1. Get status summary
+$summary_box_join = sales_box_join('o', 'oi', 'obx');
+
 $summary_sql = "
     SELECT 
         o.order_status,
@@ -125,6 +156,7 @@ $summary_sql = "
     INNER JOIN users u ON COALESCE(oi.creator_id, o.creator_id) = u.id
     LEFT JOIN products p ON oi.product_id = p.id
     LEFT JOIN order_cancellations oc ON o.id = oc.order_id
+    $summary_box_join
     WHERE 
         o.company_id = ?
         AND {$date_condition}
@@ -158,15 +190,13 @@ while ($row = $summary_result->fetch_assoc()) {
 $stmt->close();
 
 // 2. Get order details — use subquery to get distinct order IDs first
-// Build subquery-specific conditions with o2/u2 aliases
-$sub_status = str_replace(
-    ['o.order_status', 'o.amount_paid', 'o.total_amount', 'o.payment_status', 'oc.'],
-    ['o2.order_status', 'o2.amount_paid', 'o2.total_amount', 'o2.payment_status', 'oc2.'],
-    $status_condition
-);
+// เงื่อนไขของ subquery ถูกสร้างใหม่ด้วย alias ของ subquery โดยตรง
+// (เดิมใช้ str_replace แปลง alias ซึ่งพังทันทีที่เงื่อนไขอ้างคอลัมน์ใหม่)
+$sub_status = build_status_condition($status_type, $cancel_type_id, $conn, 'o2', 'obx2', 'oc2');
 $sub_dept = str_replace('u.role', 'u2.role', $dept_condition);
 $sub_product = str_replace('o.creator_id', 'o2.creator_id', $product_condition);
 $sub_date = str_replace('o.order_date', 'o2.order_date', $date_condition);
+$sub_box_join = sales_box_join('o2', 'oi', 'obx2');
 
 $orders_sql = "
     SELECT
@@ -193,11 +223,14 @@ $orders_sql = "
         SELECT
             oi.parent_order_id AS order_id,
             SUM(oi.quantity) AS item_qty,
-            COALESCE(SUM(oi.net_total), 0) AS item_total
+            COALESCE(SUM(oi.net_total), 0) AS item_total,
+            -- คนขายระดับ item ตัวที่เข้าเงื่อนไขจริง ไม่ใช่คนสร้างออเดอร์
+            MAX(COALESCE(oi.creator_id, o2.creator_id)) AS creator_id
         FROM order_items oi
         INNER JOIN orders o2 ON oi.parent_order_id = o2.id
         INNER JOIN users u2 ON COALESCE(oi.creator_id, o2.creator_id) = u2.id
         LEFT JOIN order_cancellations oc2 ON o2.id = oc2.order_id
+        $sub_box_join
         WHERE
             o2.company_id = ?
             AND {$sub_date}
@@ -209,7 +242,7 @@ $orders_sql = "
         GROUP BY oi.parent_order_id
     ) sub
     INNER JOIN orders o ON sub.order_id = o.id
-    LEFT JOIN users u ON o.creator_id = u.id
+    LEFT JOIN users u ON sub.creator_id = u.id
     LEFT JOIN customers c ON o.customer_id = c.customer_id
     LEFT JOIN order_cancellations oc ON o.id = oc.order_id
     LEFT JOIN cancellation_types ct ON oc.cancellation_type_id = ct.id
