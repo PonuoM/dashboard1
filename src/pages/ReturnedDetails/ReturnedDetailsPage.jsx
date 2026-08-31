@@ -1,5 +1,16 @@
 import { useState, useEffect } from 'react';
-import { CustomSelect } from '../../components/UI';
+import { CustomSelect, DateRangeFilter } from '../../components/UI';
+import useDateRange from '../../hooks/useDateRange';
+
+// สภาพกล่องที่ตีกลับ (order_boxes.return_status)
+const RETURN_STATUS_MAP = {
+    good: { label: 'ดี', cls: 'bg-green-100 text-green-700' },
+    damaged: { label: 'ชำรุด', cls: 'bg-red-100 text-red-700' },
+    returning: { label: 'กำลังส่งคืน', cls: 'bg-amber-100 text-amber-700' },
+    lost: { label: 'สูญหาย', cls: 'bg-gray-200 text-gray-700' },
+    returned: { label: 'คืนแล้ว', cls: 'bg-blue-100 text-blue-700' },
+};
+const returnStatusInfo = (s) => RETURN_STATUS_MAP[s] || { label: s || '-', cls: 'bg-gray-100 text-gray-500' };
 
 const ReturnedDetailsPage = ({ user }) => {
     // Current date logic for defaults
@@ -15,6 +26,9 @@ const ReturnedDetailsPage = ({ user }) => {
     const [data, setData] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+
+    // Date range filter (วันนี้ / เมื่อวาน / กำหนดวัน) — overrides month/year when active
+    const dateRange = useDateRange('returnedDetails');
 
     const months = [
         { value: 1, label: 'มกราคม' }, { value: 2, label: 'กุมภาพันธ์' }, { value: 3, label: 'มีนาคม' },
@@ -35,7 +49,7 @@ const ReturnedDetailsPage = ({ user }) => {
 
     useEffect(() => {
         fetchData();
-    }, [month, year, user.company_id]);
+    }, [month, year, user.company_id, dateRange.key]);
 
     const fetchData = async () => {
         setLoading(true);
@@ -46,7 +60,12 @@ const ReturnedDetailsPage = ({ user }) => {
                 company_id: user.company_id,
                 month: month,
                 year: apiYear,
+                user_id: user.id || '',
             });
+            if (dateRange.active) {
+                params.set('start_date', dateRange.startParam);
+                params.set('end_date', dateRange.endParam);
+            }
             const response = await fetch(`./api/reports/returned_orders_report.php?${params}`);
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             const result = await response.json();
@@ -66,7 +85,11 @@ const ReturnedDetailsPage = ({ user }) => {
                         customer_name: order.customer_name || '',
                         customer_phone: order.customer_phone || '',
                         order_id: order.order_id || '',
+                        box_number: order.box_number || '',
+                        return_status: order.return_status || '',
+                        order_status: order.order_status || '',
                         net_total: order.net_total || 0,
+                        box_item_total: order.box_item_total || 0,
                         products: order.products || '',
                         order_date: order.order_date || '',
                         delivery_date: order.delivery_date || '',
@@ -118,7 +141,11 @@ const ReturnedDetailsPage = ({ user }) => {
             'ชื่อลูกค้า',
             'เบอร์ลูกค้า',
             'รหัสออเดอร์',
-            'ยอดเงิน',
+            'กล่อง',
+            'สภาพคืน',
+            'สถานะออเดอร์',
+            'ยอดคืน (COD)',
+            'มูลค่าสินค้าในกล่อง',
             'สินค้า',
             'วันที่สร้างออเดอร์',
             'วันที่ส่ง',
@@ -141,7 +168,11 @@ const ReturnedDetailsPage = ({ user }) => {
                 `"${row.customer_name}"`,
                 `"${row.customer_phone}"`,
                 `"${row.order_id}"`,
+                `"${row.box_number ? '#' + row.box_number : ''}"`,
+                `"${returnStatusInfo(row.return_status).label}"`,
+                `"${row.order_status}"`,
                 row.net_total,
+                row.box_item_total,
                 `"${row.products}"`,
                 `"${row.order_date}"`,
                 `"${row.delivery_date}"`,
@@ -174,25 +205,28 @@ const ReturnedDetailsPage = ({ user }) => {
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
                 <div>
                     <h2 className="text-2xl font-bold text-gray-800">รายละเอียดตีกลับ</h2>
-                    <p className="text-sm text-gray-500 mt-1">ข้อมูลออเดอร์ที่ถูกตีกลับพร้อมรายละเอียดบันทึกการโทร</p>
+                    <p className="text-sm text-gray-500 mt-1">แสดงราย<span className="font-medium">กล่อง</span>ที่ถูกตีกลับ (1 ออเดอร์อาจมีหลายกล่อง/ตีกลับบางกล่อง) · ยอดคืน = COD ของกล่องนั้น · พร้อมบันทึกการโทร</p>
                 </div>
 
-                <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
-                    <div className="w-full sm:w-48">
-                        <CustomSelect
-                            label="เดือน"
-                            options={months}
-                            value={month}
-                            onChange={(val) => setMonth(parseInt(val))}
-                        />
-                    </div>
-                    <div className="w-full sm:w-32">
-                        <CustomSelect
-                            label="ปี"
-                            options={years.map(y => ({ value: y, label: y + 543 }))}
-                            value={year}
-                            onChange={(val) => setYear(parseInt(val))}
-                        />
+                <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto items-start sm:items-center">
+                    <DateRangeFilter value={dateRange} />
+                    <div className={`flex flex-col sm:flex-row gap-4 ${dateRange.active ? 'opacity-50 pointer-events-none' : ''}`}>
+                        <div className="w-full sm:w-48">
+                            <CustomSelect
+                                label="เดือน"
+                                options={months}
+                                value={month}
+                                onChange={(val) => setMonth(parseInt(val))}
+                            />
+                        </div>
+                        <div className="w-full sm:w-32">
+                            <CustomSelect
+                                label="ปี"
+                                options={years.map(y => ({ value: y, label: y + 543 }))}
+                                value={year}
+                                onChange={(val) => setYear(parseInt(val))}
+                            />
+                        </div>
                     </div>
                     <button
                         onClick={handleExport}
@@ -233,7 +267,9 @@ const ReturnedDetailsPage = ({ user }) => {
                                     <th className="text-left py-3 px-3 text-xs font-semibold text-gray-600 uppercase tracking-wider sticky top-0 bg-gray-50 z-10 border-l border-gray-200">ชื่อลูกค้า</th>
                                     <th className="text-left py-3 px-3 text-xs font-semibold text-gray-600 uppercase tracking-wider sticky top-0 bg-gray-50 z-10">เบอร์ลูกค้า</th>
                                     <th className="text-left py-3 px-3 text-xs font-semibold text-gray-600 uppercase tracking-wider sticky top-0 bg-gray-50 z-10">รหัสออเดอร์</th>
-                                    <th className="text-right py-3 px-3 text-xs font-semibold text-gray-600 uppercase tracking-wider sticky top-0 bg-gray-50 z-10">ยอดเงิน</th>
+                                    <th className="text-center py-3 px-3 text-xs font-semibold text-gray-600 uppercase tracking-wider sticky top-0 bg-gray-50 z-10">กล่อง</th>
+                                    <th className="text-center py-3 px-3 text-xs font-semibold text-gray-600 uppercase tracking-wider sticky top-0 bg-gray-50 z-10">สภาพคืน</th>
+                                    <th className="text-right py-3 px-3 text-xs font-semibold text-gray-600 uppercase tracking-wider sticky top-0 bg-gray-50 z-10">ยอดคืน (COD)</th>
                                     <th className="text-left py-3 px-3 text-xs font-semibold text-gray-600 uppercase tracking-wider sticky top-0 bg-gray-50 z-10 min-w-[150px]">สินค้า</th>
                                     <th className="text-left py-3 px-3 text-xs font-semibold text-gray-600 uppercase tracking-wider sticky top-0 bg-gray-50 z-10">วันที่ออเดอร์</th>
                                     <th className="text-left py-3 px-3 text-xs font-semibold text-gray-600 uppercase tracking-wider sticky top-0 bg-gray-50 z-10 border-r-2 border-gray-300">วันที่ส่ง</th>
@@ -250,7 +286,13 @@ const ReturnedDetailsPage = ({ user }) => {
                                         <td className="py-2 px-3 text-xs text-gray-800 border-l border-gray-100">{row.customer_name}</td>
                                         <td className="py-2 px-3 text-xs text-gray-600">{row.customer_phone}</td>
                                         <td className="py-2 px-3 text-xs text-blue-600 font-medium">{row.order_id}</td>
-                                        <td className="py-2 px-3 text-xs text-gray-800 text-right font-medium">฿{Number(row.net_total).toLocaleString()}</td>
+                                        <td className="py-2 px-3 text-xs text-center text-gray-700">{row.box_number ? `#${row.box_number}` : '-'}</td>
+                                        <td className="py-2 px-3 text-xs text-center">
+                                            <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${returnStatusInfo(row.return_status).cls}`}>
+                                                {returnStatusInfo(row.return_status).label}
+                                            </span>
+                                        </td>
+                                        <td className="py-2 px-3 text-xs text-gray-800 text-right font-medium" title={row.box_item_total ? `มูลค่าสินค้าในกล่อง (net): ฿${Number(row.box_item_total).toLocaleString()}` : ''}>฿{Number(row.net_total).toLocaleString()}</td>
                                         <td className="py-2 px-3 text-xs text-gray-600 truncate max-w-[150px]" title={row.products}>{row.products}</td>
                                         <td className="py-2 px-3 text-xs text-gray-600">{row.order_date}</td>
                                         <td className="py-2 px-3 text-xs text-gray-600 border-r-2 border-gray-300">{row.delivery_date}</td>

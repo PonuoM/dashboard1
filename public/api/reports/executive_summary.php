@@ -22,6 +22,11 @@ if ($company_id <= 0) {
 $start_date = sprintf('%04d-%02d-01 00:00:00', $year, $month);
 $end_date = date('Y-m-d 00:00:00', strtotime($start_date . ' +1 month'));
 
+// Optional explicit date range (วันนี้ / เมื่อวาน / กำหนดวัน) — overrides month/year ถ้ามี
+require_once __DIR__ . '/../helpers/date_filter.php';
+$__r = resolve_date_range();
+if ($__r) { $start_date = $__r['start']; $end_date = $__r['end_excl']; }
+
 // Previous month
 $prev_month = $month - 1;
 $prev_year = $year;

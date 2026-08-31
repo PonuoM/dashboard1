@@ -48,9 +48,7 @@ function SummaryTable({ data, prevData, totalOrdersDistinct, bySalesperson, prev
     const totalCustomers = (parseInt(fertData.customer_count) || 0) + (parseInt(bioData.customer_count) || 0);
 
     const prevTotalSales = (parseFloat(prevFertData.total_sales) || 0) + (parseFloat(prevBioData.total_sales) || 0);
-    const totalGrowth = calcGrowth(totalSales, prevTotalSales);
 
-    const avgOrderValue = totalOrders > 0 ? Math.round(totalSales / totalOrders) : 0;
     const fertPercent = totalSales > 0 ? ((parseFloat(fertData.total_sales) || 0) / totalSales * 100).toFixed(0) : 0;
     const bioPercent = totalSales > 0 ? ((parseFloat(bioData.total_sales) || 0) / totalSales * 100).toFixed(0) : 0;
 
@@ -58,9 +56,15 @@ function SummaryTable({ data, prevData, totalOrdersDistinct, bySalesperson, prev
     const totalReturned = getReturned(bySalesperson);
     const prevTotalReturned = getReturned(prevBySalesperson);
 
-    const netSales = totalSales - totalReturned;
-    const prevNetSales = prevTotalSales - prevTotalReturned;
+    // totalSales (from the backend summary query) already excludes Returned orders, so it IS the net figure.
+    // Gross (all orders incl. returns) = net + returned.
+    const netSales = totalSales;
+    const prevNetSales = prevTotalSales;
     const netGrowth = calcGrowth(netSales, prevNetSales);
+
+    const grossSales = totalSales + totalReturned;
+    const prevGrossSales = prevTotalSales + prevTotalReturned;
+    const grossGrowth = calcGrowth(grossSales, prevGrossSales);
 
     return (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -69,12 +73,12 @@ function SummaryTable({ data, prevData, totalOrdersDistinct, bySalesperson, prev
                 <div className="flex items-start justify-between mb-3">
                     <div>
                         <h2 className="text-sm font-bold text-gray-700">ยอดขายรวมทั้งหมด</h2>
-                        <p className="text-[10px] text-gray-500">ปุ๋ย + ชีวภัณฑ์</p>
+                        <p className="text-[10px] text-gray-500">ปุ๋ย + ชีวภัณฑ์ (รวมตีกลับ)</p>
                     </div>
-                    <GrowthBadge growth={totalGrowth} />
+                    <GrowthBadge growth={grossGrowth} />
                 </div>
                 <div className="mb-4">
-                    <span className="text-3xl font-extrabold text-primary tracking-tight">฿{formatCurrency(totalSales)}</span>
+                    <span className="text-3xl font-extrabold text-primary tracking-tight">฿{formatCurrency(grossSales)}</span>
                 </div>
                 <div className="grid grid-cols-4 gap-3 pt-3 border-t border-primary/20">
                     <div>
@@ -91,7 +95,7 @@ function SummaryTable({ data, prevData, totalOrdersDistinct, bySalesperson, prev
                     </div>
                     <div>
                         <p className="text-[9px] font-bold text-gray-400 uppercase">เฉลี่ย/ออเดอร์</p>
-                        <p className="text-base font-bold text-amber-600">฿{formatCurrency(avgOrderValue)}</p>
+                        <p className="text-base font-bold text-amber-600">฿{formatCurrency(totalOrders > 0 ? Math.round(grossSales / totalOrders) : 0)}</p>
                     </div>
                 </div>
             </div>

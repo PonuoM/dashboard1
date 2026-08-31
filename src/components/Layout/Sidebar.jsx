@@ -3,17 +3,17 @@ import logo from '../icon/logo.png';
 import logo1 from '../icon/Logo1.png';
 import logo2 from '../icon/Logo2.png';
 import logoFree from '../icon/Logofree.png';
+import { canAccessPage } from '../../permissions';
 
 function Sidebar({ user, onLogout, isExpanded, setIsExpanded, currentPage, onPageChange }) {
     const [openMenus, setOpenMenus] = useState({});
 
-    // Check if user is Supervisor Telesale (restricted access)
-    const isSupervisor = user?.role === 'Supervisor Telesale';
+    const role = user?.role;
 
-    // Navigation items with categories
-    const navItems = [
-        { id: 'executive-insight', icon: 'auto_awesome', label: 'สรุปภาพรวม', disabled: isSupervisor },
-        { id: 'dashboard', icon: 'dashboard', label: 'แดชบอร์ด', disabled: isSupervisor },
+    // Navigation items with categories — filtered per role via PAGE_ACCESS (App.jsx)
+    const allNavItems = [
+        { id: 'executive-insight', icon: 'auto_awesome', label: 'สรุปภาพรวม' },
+        { id: 'dashboard', icon: 'dashboard', label: 'แดชบอร์ด' },
         {
             id: 'telesale-reports',
             icon: 'headset_mic',
@@ -30,20 +30,32 @@ function Sidebar({ user, onLogout, isExpanded, setIsExpanded, currentPage, onPag
             icon: 'admin_panel_settings',
             label: 'Admin Reports',
             isCategory: true,
-            disabled: isSupervisor,
             children: [
-                { id: 'admin-sales', icon: 'analytics', label: 'รายงานยอดขาย', disabled: isSupervisor },
-                { id: 'page-analysis', icon: 'troubleshoot', label: 'วิเคราะห์ Page', disabled: isSupervisor },
-                { id: 'ads-summary', icon: 'campaign', label: 'สรุป Ads', disabled: isSupervisor },
+                { id: 'admin-sales', icon: 'analytics', label: 'รายงานยอดขาย' },
+                { id: 'page-analysis', icon: 'troubleshoot', label: 'วิเคราะห์ Page' },
+                { id: 'ads-summary', icon: 'campaign', label: 'สรุป Ads' },
             ]
         },
         { id: 'product-analysis', icon: 'inventory', label: 'วิเคราะห์ผลิตภัณฑ์' },
-        { id: 'individual-sales', icon: 'person_search', label: 'ยอดขายรายบุคคล', disabled: isSupervisor },
+        { id: 'individual-sales', icon: 'person_search', label: 'ยอดขายรายบุคคล' },
         { id: 'regional-sales', icon: 'map', label: 'ยอดขายตามภูมิภาค' },
-        { id: 'accounting', icon: 'account_balance', label: 'รายงานบัญชี', disabled: isSupervisor },
+        { id: 'accounting', icon: 'account_balance', label: 'รายงานบัญชี' },
         { id: 'team', icon: 'groups', label: 'ทีมงาน', disabled: true },
         { id: 'inventory', icon: 'inventory_2', label: 'คลังสินค้า', disabled: true },
     ];
+
+    // Keep only items the role can access; categories stay only if a child survives
+    const navItems = allNavItems
+        .map(item => {
+            if (item.children) {
+                const children = item.children.filter(child => canAccessPage(role, child.id));
+                return children.length > 0 ? { ...item, children } : null;
+            }
+            // placeholder items (ทีมงาน/คลังสินค้า) แสดงเฉพาะ Admin Control / Backoffice
+            if (item.disabled) return ['admin control', 'backoffice'].includes((role || '').toLowerCase()) ? item : null;
+            return canAccessPage(role, item.id) ? item : null;
+        })
+        .filter(Boolean);
 
     const toggleMenu = (menuId) => {
         // If sidebar is collapsed, expand it first

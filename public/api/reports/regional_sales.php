@@ -32,6 +32,11 @@ if ($month === 0) {
     $end_date = date('Y-m-d 00:00:00', strtotime($start_date . ' +1 month'));
 }
 
+// Optional explicit date range (วันนี้ / เมื่อวาน / กำหนดวัน) — overrides month/year ถ้ามี
+require_once __DIR__ . '/../helpers/date_filter.php';
+$__r = resolve_date_range();
+if ($__r) { $start_date = $__r['start']; $end_date = $__r['end_excl']; }
+
 // Department filter condition
 $dept_condition = "";
 if ($department === 'telesale') {
@@ -69,10 +74,10 @@ if ($user_id > 0) {
         $sub_stmt->close();
         $ids_str = implode(',', $allowed_user_ids);
         $access_filter = " AND o.creator_id IN ($ids_str)";
-    } elseif ($user_role === 'Telesale') {
+    } elseif ($user_role === 'Telesale' || $user_role === 'Admin Page') {
         $access_filter = " AND o.creator_id = $user_id";
     }
-    // Admin or other roles: no filter (see all)
+    // Admin Control or other roles: no filter (see all)
 }
 
 try {

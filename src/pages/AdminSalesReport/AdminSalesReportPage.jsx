@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
-import { SummaryTable, DetailTable } from '../../components/Tables';
-import { CustomSelect } from '../../components/UI';
+import { SummaryTable, DetailTable, TeamSalesCards } from '../../components/Tables';
+import { CustomSelect, DateRangeFilter } from '../../components/UI';
+import useDateRange from '../../hooks/useDateRange';
+import CancelledOrdersModal from '../../components/Modals/CancelledOrdersModal';
 
 // Platform icons
 import facebookIcon from '../../components/icon/facebook(admin).png';
@@ -15,6 +17,8 @@ function AdminSalesReportPage({ user }) {
     const [data, setData] = useState(null);
     const [meta, setMeta] = useState(null);
     const [prevMonthData, setPrevMonthData] = useState(null);
+    const [cancelModal, setCancelModal] = useState({ open: false, userId: null, userName: '', cancelTypeId: null, cancelTypeLabel: '' });
+    const [returnedModal, setReturnedModal] = useState({ open: false, userId: null, userName: '' });
 
     // Filters - Initialize from sessionStorage
     const currentDate = new Date();
@@ -27,6 +31,9 @@ function AdminSalesReportPage({ user }) {
         return saved ? parseInt(saved) : currentDate.getFullYear();
     });
     const [includeCancelled, setIncludeCancelled] = useState(false);
+
+    // Date range filter (วันนี้ / เมื่อวาน / กำหนดวัน) — overrides month/year when active
+    const dateRange = useDateRange('adminSalesReport');
 
     // Save filter values to sessionStorage
     useEffect(() => {
@@ -62,7 +69,7 @@ function AdminSalesReportPage({ user }) {
 
     useEffect(() => {
         fetchData();
-    }, [month, year, includeCancelled, user?.company_id]);
+    }, [month, year, includeCancelled, user?.company_id, dateRange.key]);
 
     const fetchData = async () => {
         if (!user?.company_id) {
@@ -87,19 +94,14 @@ function AdminSalesReportPage({ user }) {
                 month: month,
                 year: year,
                 include_cancelled: includeCancelled ? 1 : 0,
+                user_id: user.id || '',
             });
+            if (dateRange.active) {
+                params.set('start_date', dateRange.startParam);
+                params.set('end_date', dateRange.endParam);
+            }
 
-            const prevParams = new URLSearchParams({
-                company_id: user.company_id,
-                month: prevMonth,
-                year: prevYear,
-                include_cancelled: includeCancelled ? 1 : 0,
-            });
-
-            const [response, prevResponse] = await Promise.all([
-                fetch(`./api/reports/admin_sales.php?${params}`),
-                fetch(`./api/reports/admin_sales.php?${prevParams}`)
-            ]);
+            const response = await fetch(`./api/reports/admin_sales.php?${params}`);
 
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             const result = await response.json();
@@ -111,11 +113,24 @@ function AdminSalesReportPage({ user }) {
                 setError(result.message || 'Failed to fetch data');
             }
 
-            if (prevResponse.ok) {
-                const prevResult = await prevResponse.json();
-                if (prevResult.success) {
-                    setPrevMonthData(prevResult.data);
+            // เปรียบเทียบเดือนก่อนหน้า เฉพาะโหมดปี/เดือน (ช่วงวันไม่มี baseline ที่ชัดเจน)
+            if (!dateRange.active) {
+                const prevParams = new URLSearchParams({
+                    company_id: user.company_id,
+                    month: prevMonth,
+                    year: prevYear,
+                    include_cancelled: includeCancelled ? 1 : 0,
+                    user_id: user.id || '',
+                });
+                const prevResponse = await fetch(`./api/reports/admin_sales.php?${prevParams}`);
+                if (prevResponse.ok) {
+                    const prevResult = await prevResponse.json();
+                    if (prevResult.success) {
+                        setPrevMonthData(prevResult.data);
+                    }
                 }
+            } else {
+                setPrevMonthData(null);
             }
         } catch (err) {
             console.error('Fetch error:', err);
@@ -123,6 +138,116 @@ function AdminSalesReportPage({ user }) {
         } finally {
             setLoading(false);
         }
+    };
+
+    const handleExport = () => {
+        if (!data || !data.by_salesperson) return;
+
+        let grandSales = 0, grandReturn = 0;
+        data.by_salesperson.forEach(p => {
+            grandSales += parseFloat(p.total_sales) || 0;
+            grandReturn += parseFloat(p.returned_amount) || 0;
+        });
+        const grandNet = grandSales - grandReturn;
+
+        const headers = [
+            'ชื่อพนักงาน', 'ตำแหน่ง',
+            'ยอดขายรวม (บาท)', 'ออเดอร์ตีกลับ', 'ยอดตีกลับ (บาท)', 'ยอดขายสุทธิ (บาท)',
+            'ยกเลิก-ก่อนเข้าระบบ (บาท)', 'ยกเลิก-หลังเข้าระบบ (บาท)', 'ปฏิเสธรับสินค้า (บาท)',
+            'หนี้สูญ (บาท)',
+            'ยอดขายปุ๋ย (บาท)', 'ออเดอร์ปุ๋ย', 'เฉลี่ยต่อออเดอร์ (ปุ๋ย)',
+            'ยอดขายชีวภัณฑ์ (บาท)', 'ออเดอร์ชีวภัณฑ์', 'เฉลี่ยต่อออเดอร์ (ชีวภัณฑ์)'
+        ];
+
+        const getCancelTypeAmt = (person, typeId) => {
+            const byType = person.cancelled_by_type || {};
+            if (typeof byType === 'object' && byType[typeId]) {
+                return byType[typeId].amount || 0;
+            }
+            return 0;
+        };
+
+        const createRow = (dataArr) => {
+            const arr = new Array(20).fill('');
+            dataArr.forEach((val, index) => { if (val !== undefined) arr[index] = val; });
+            return arr;
+        };
+
+        const rows = [];
+        const headerRow = createRow(headers);
+        headerRow[17] = '"ยอดขายรวม (บาท)"';
+        headerRow[18] = '"ยอดตีกลับ (บาท)"';
+        headerRow[19] = '"ยอดขายสุทธิ (บาท)"';
+        rows.push(headerRow);
+
+        let tSales = 0, tRet = 0, tRetCount = 0, tNet = 0, tCan1 = 0, tCan2 = 0, tCan3 = 0, tBadDebt = 0;
+        let tFertS = 0, tFertO = 0, tBioS = 0, tBioO = 0;
+
+        const sorted = [...data.by_salesperson].sort((a, b) => parseFloat(b.total_sales) - parseFloat(a.total_sales));
+
+        sorted.forEach((p, idx) => {
+            const netSales = (parseFloat(p.total_sales) || 0) - (parseFloat(p.returned_amount) || 0);
+            const fertAvg = parseInt(p.fertilizer_orders) > 0 ? (parseFloat(p.fertilizer_sales) / parseInt(p.fertilizer_orders)) : 0;
+            const bioAvg = parseInt(p.bio_orders) > 0 ? (parseFloat(p.bio_sales) / parseInt(p.bio_orders)) : 0;
+            const can1 = getCancelTypeAmt(p, 1);
+            const can2 = getCancelTypeAmt(p, 2);
+            const can3 = getCancelTypeAmt(p, 3);
+
+            tSales += parseFloat(p.total_sales) || 0;
+            tRetCount += parseInt(p.returned_count) || 0;
+            tRet += parseFloat(p.returned_amount) || 0;
+            tNet += netSales;
+            tCan1 += can1; tCan2 += can2; tCan3 += can3;
+            tBadDebt += parseFloat(p.baddebt_amount) || 0;
+            tFertS += parseFloat(p.fertilizer_sales) || 0;
+            tFertO += parseInt(p.fertilizer_orders) || 0;
+            tBioS += parseFloat(p.bio_sales) || 0;
+            tBioO += parseInt(p.bio_orders) || 0;
+
+            const rowData = [
+                `"${p.salesperson_name || ''}"`,
+                `"${p.role_name || '-'}"`,
+                parseFloat(p.total_sales) || 0,
+                parseInt(p.returned_count) || 0,
+                parseFloat(p.returned_amount) || 0,
+                netSales,
+                can1, can2, can3,
+                parseFloat(p.baddebt_amount) || 0,
+                parseFloat(p.fertilizer_sales) || 0,
+                parseInt(p.fertilizer_orders) || 0,
+                Math.round(fertAvg),
+                parseFloat(p.bio_sales) || 0,
+                parseInt(p.bio_orders) || 0,
+                Math.round(bioAvg)
+            ];
+            const formattedRow = createRow(rowData);
+            if (idx === 0) {
+                formattedRow[17] = grandSales;
+                formattedRow[18] = grandReturn;
+                formattedRow[19] = grandNet;
+            }
+            rows.push(formattedRow);
+        });
+
+        // Total row
+        const totalFertAvg = tFertO > 0 ? Math.round(tFertS / tFertO) : 0;
+        const totalBioAvg = tBioO > 0 ? Math.round(tBioS / tBioO) : 0;
+        rows.push(createRow([
+            '"ผลรวม"', '',
+            tSales, tRetCount, tRet, tNet, tCan1, tCan2, tCan3, tBadDebt,
+            tFertS, tFertO, totalFertAvg,
+            tBioS, tBioO, totalBioAvg
+        ]));
+
+        const csvContent = '﻿' + rows.map(r => r.join(',')).join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', `AdminPage_Report_${year}_${month}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
     };
 
     return (
@@ -137,15 +262,19 @@ function AdminSalesReportPage({ user }) {
                         📋 รายงานยอดขาย Admin Page
                     </h2>
                     <p className="text-xs text-gray-500">
-                        {month === 0 ? `ทั้งปี ${year}` : `${months.find(m => m.value === month)?.label} ${year}`}
+                        {dateRange.active
+                            ? (dateRange.start === dateRange.end ? dateRange.start : `${dateRange.start} → ${dateRange.end}`)
+                            : (month === 0 ? `ทั้งปี ${year}` : `${months.find(m => m.value === month)?.label} ${year}`)}
                     </p>
                 </div>
 
                 {/* Right - Controls */}
                 <div className="flex flex-wrap items-center gap-3">
 
+                    <DateRangeFilter value={dateRange} />
+
                     {/* Date Navigation Group */}
-                    <div className="flex items-center gap-1 bg-white rounded-xl border border-gray-200 p-1">
+                    <div className={`flex items-center gap-1 bg-white rounded-xl border border-gray-200 p-1 ${dateRange.active ? 'opacity-50 pointer-events-none' : ''}`}>
                         <button
                             onClick={goToPrevMonth}
                             className="p-2 rounded-lg text-gray-400 hover:text-primary hover:bg-primary/5 transition-colors"
@@ -192,7 +321,10 @@ function AdminSalesReportPage({ user }) {
                         <span className="text-sm font-bold">รวมยกเลิก</span>
                     </label>
 
-                    <button className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-white font-bold hover:bg-primary/90 transition-all shadow-sm">
+                    <button
+                        onClick={handleExport}
+                        className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-white font-bold hover:bg-primary/90 transition-all shadow-sm"
+                    >
                         <span className="material-symbols-outlined text-lg">download</span>
                         <span className="text-sm">ส่งออก</span>
                     </button>
@@ -213,7 +345,23 @@ function AdminSalesReportPage({ user }) {
                 <>
                     <div className="space-y-6">
                         {/* Summary Cards */}
-                        <SummaryTable data={data.summary} prevData={prevMonthData?.summary} />
+                        <SummaryTable data={data.summary} prevData={prevMonthData?.summary} totalOrdersDistinct={data.total_orders_distinct} bySalesperson={data.by_salesperson} prevBySalesperson={prevMonthData?.by_salesperson} />
+
+                        {/* Team-based Sales Cards (drill-down for cancelled/returned) */}
+                        {data.by_salesperson && data.by_salesperson.length > 0 && (
+                            <TeamSalesCards
+                                data={data.by_salesperson}
+                                meta={meta}
+                                cancellationTypes={data.cancellation_types}
+                                defaultTeamName="ทีม Admin Page"
+                                onViewCancelledOrders={({ userId, userName, cancelTypeId, cancelTypeLabel }) => {
+                                    setCancelModal({ open: true, userId, userName, cancelTypeId, cancelTypeLabel });
+                                }}
+                                onViewReturnedOrders={({ userId, userName }) => {
+                                    setReturnedModal({ open: true, userId, userName });
+                                }}
+                            />
+                        )}
 
                         {/* Main Grid - Left: Admin Ranking + Platform Cards | Right: Page Table */}
                         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -329,6 +477,32 @@ function AdminSalesReportPage({ user }) {
                     </div>
                 </>
             )}
+
+            {/* Cancelled Orders Modal */}
+            <CancelledOrdersModal
+                isOpen={cancelModal.open}
+                onClose={() => setCancelModal({ ...cancelModal, open: false })}
+                userId={cancelModal.userId}
+                userName={cancelModal.userName}
+                cancelTypeId={cancelModal.cancelTypeId}
+                cancelTypeLabel={cancelModal.cancelTypeLabel}
+                companyId={user?.company_id}
+                month={month}
+                year={year}
+                mode="cancelled"
+            />
+
+            {/* Returned Orders Modal */}
+            <CancelledOrdersModal
+                isOpen={returnedModal.open}
+                onClose={() => setReturnedModal({ ...returnedModal, open: false })}
+                userId={returnedModal.userId}
+                userName={returnedModal.userName}
+                companyId={user?.company_id}
+                month={month}
+                year={year}
+                mode="returned"
+            />
         </div>
     );
 }

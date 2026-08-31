@@ -25,6 +25,7 @@ $company_id = isset($_GET['company_id']) ? intval($_GET['company_id']) : 0;
 $month = isset($_GET['month']) ? intval($_GET['month']) : date('n');
 $year = isset($_GET['year']) ? intval($_GET['year']) : date('Y');
 $include_cancelled = isset($_GET['include_cancelled']) ? intval($_GET['include_cancelled']) : 0;
+$user_id = isset($_GET['user_id']) ? intval($_GET['user_id']) : 0;
 
 // Validate required parameters
 if ($company_id <= 0) {
@@ -54,8 +55,36 @@ if ($month === 0) {
     $end_date = date('Y-m-d 00:00:00', strtotime($start_date . ' +1 month'));
 }
 
+// Optional explicit date range (วันนี้ / เมื่อวาน / กำหนดวัน) — overrides month/year ถ้ามี
+require_once __DIR__ . '/../helpers/date_filter.php';
+$__r = resolve_date_range();
+if ($__r) {
+    $start_date = $__r['start'];
+    $end_date = $__r['end_excl'];
+}
+
 // Build cancelled filter
 $cancelled_filter = $include_cancelled ? "" : "AND o.order_status != 'Cancelled'";
+
+// Build access control filter based on user role
+// Admin Page user sees only own data; Admin/other roles see all
+$access_filter = "";
+if ($user_id > 0) {
+    $role_stmt = $conn->prepare("SELECT role FROM users WHERE id = ?");
+    $role_stmt->bind_param('i', $user_id);
+    $role_stmt->execute();
+    $role_result = $role_stmt->get_result();
+    $user_role = '';
+    if ($row = $role_result->fetch_assoc()) {
+        $user_role = $row['role'];
+    }
+    $role_stmt->close();
+
+    if ($user_role === 'Admin Page') {
+        $access_filter = " AND u.id = $user_id";
+    }
+    // Admin and other roles: no filter (see all)
+}
 
 try {
     // Query 1: Summary by Product Type for Admin Page role
@@ -83,6 +112,7 @@ try {
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
             AND (oi.is_promotion_parent = 0 OR oi.is_promotion_parent IS NULL)
             {$cancelled_filter}
+            {$access_filter}
         GROUP BY product_type
         ORDER BY product_type
     ";
@@ -125,6 +155,7 @@ try {
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
             AND (oi.is_promotion_parent = 0 OR oi.is_promotion_parent IS NULL)
             {$cancelled_filter}
+            {$access_filter}
         GROUP BY u.id, u.first_name, u.role
         ORDER BY total_sales DESC
     ";
@@ -168,6 +199,7 @@ try {
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
             AND (oi.is_promotion_parent = 0 OR oi.is_promotion_parent IS NULL)
             AND o.order_status != 'Cancelled'
+            {$access_filter}
         GROUP BY u.id
     ";
     $stmt = $conn->prepare($prev_sql);
@@ -180,21 +212,162 @@ try {
     $stmt->close();
 
     // Calculate days in month and days elapsed
-    $days_in_month = intval(date('t', strtotime($start_date)));
-    
-    if ($year == date('Y') && $month == date('n')) {
-        $days_elapsed = intval(date('j'));
-    } else {
+    if ($__r) {
+        // โหมดช่วงวัน: ใช้จำนวนวันจริงของช่วงที่เลือก
+        $days_in_month = max(1, intval((strtotime($end_date) - strtotime($start_date)) / 86400));
         $days_elapsed = $days_in_month;
+    } else {
+        $days_in_month = intval(date('t', strtotime($start_date)));
+        if ($year == date('Y') && $month == date('n')) {
+            $days_elapsed = intval(date('j'));
+        } else {
+            $days_elapsed = $days_in_month;
+        }
     }
 
-    // Merge prev_month_sales into by_salesperson
+    // Query 3b: Cancelled orders by user AND cancellation type
+    $cancelled_by_type = [];
+    $cancelled_amounts = [];
+    $baddebt_amounts = [];
+    $cancelled_sql = "
+        SELECT
+            u.id AS user_id,
+            o.order_status,
+            COALESCE(oc.cancellation_type_id, 0) AS cancel_type_id,
+            COALESCE(SUM(oi.net_total), 0) AS cancelled_total,
+            COUNT(DISTINCT o.id) AS cancelled_count
+        FROM orders o
+        INNER JOIN order_items oi ON o.id = oi.parent_order_id
+        INNER JOIN products p ON oi.product_id = p.id
+        INNER JOIN users u ON oi.creator_id = u.id
+        LEFT JOIN order_cancellations oc ON oc.order_id = o.id
+        WHERE
+            o.company_id = ?
+            AND u.role NOT IN ('Telesale','Supervisor Telesale')
+            AND o.order_date >= ?
+            AND o.order_date < ?
+            AND (p.category LIKE '%ปุ๋ย%' OR p.category = 'ชีวภัณฑ์')
+            AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND (oi.is_promotion_parent = 0 OR oi.is_promotion_parent IS NULL)
+            AND o.order_status IN ('Cancelled', 'BadDebt')
+            {$access_filter}
+        GROUP BY u.id, o.order_status, oc.cancellation_type_id
+    ";
+    $stmt = $conn->prepare($cancelled_sql);
+    if ($stmt) {
+        $stmt->bind_param("iss", $company_id, $start_date, $end_date);
+        $stmt->execute();
+        $cancelled_result = $stmt->get_result();
+        while ($row = $cancelled_result->fetch_assoc()) {
+            $uid = $row['user_id'];
+            $status = $row['order_status'];
+            $tid = intval($row['cancel_type_id']);
+
+            if ($status === 'Cancelled') {
+                if (!isset($cancelled_by_type[$uid])) $cancelled_by_type[$uid] = [];
+                $cancelled_by_type[$uid][$tid] = [
+                    'amount' => floatval($row['cancelled_total']),
+                    'count' => intval($row['cancelled_count'])
+                ];
+                if (!isset($cancelled_amounts[$uid])) $cancelled_amounts[$uid] = 0;
+                $cancelled_amounts[$uid] += floatval($row['cancelled_total']);
+            } elseif ($status === 'BadDebt') {
+                if (!isset($baddebt_amounts[$uid])) $baddebt_amounts[$uid] = 0;
+                $baddebt_amounts[$uid] += floatval($row['cancelled_total']);
+            }
+        }
+        $stmt->close();
+    }
+
+    // Query 3c: Cancellation types list
+    $cancellation_types = [];
+    $ct_result = $conn->query("SELECT id, label, description FROM cancellation_types WHERE is_active = 1 ORDER BY sort_order");
+    if ($ct_result) {
+        while ($row = $ct_result->fetch_assoc()) {
+            $cancellation_types[] = $row;
+        }
+    }
+
+    // Query 3d: Returned amounts by user
+    $returned_amounts = [];
+    $returned_counts = [];
+    $returned_sql = "
+        SELECT
+            u.id AS user_id,
+            COALESCE(SUM(oi.net_total), 0) AS returned_total,
+            COUNT(DISTINCT o.id) AS returned_count
+        FROM orders o
+        INNER JOIN order_items oi ON o.id = oi.parent_order_id
+        INNER JOIN products p ON oi.product_id = p.id
+        INNER JOIN users u ON oi.creator_id = u.id
+        WHERE
+            o.company_id = ?
+            AND u.role NOT IN ('Telesale','Supervisor Telesale')
+            AND o.order_date >= ?
+            AND o.order_date < ?
+            AND (p.category LIKE '%ปุ๋ย%' OR p.category = 'ชีวภัณฑ์')
+            AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND (oi.is_promotion_parent = 0 OR oi.is_promotion_parent IS NULL)
+            AND o.order_status = 'Returned'
+            {$access_filter}
+        GROUP BY u.id
+    ";
+    $stmt = $conn->prepare($returned_sql);
+    if ($stmt) {
+        $stmt->bind_param("iss", $company_id, $start_date, $end_date);
+        $stmt->execute();
+        $ret_result = $stmt->get_result();
+        while ($row = $ret_result->fetch_assoc()) {
+            $returned_amounts[$row['user_id']] = floatval($row['returned_total']);
+            $returned_counts[$row['user_id']] = intval($row['returned_count']);
+        }
+        $stmt->close();
+    }
+
+    // Query 3e: Total distinct orders (across all admins) — for SummaryTable consistency
+    $total_orders_distinct = 0;
+    $totals_sql = "
+        SELECT COUNT(DISTINCT o.id) AS total_orders
+        FROM orders o
+        INNER JOIN order_items oi ON o.id = oi.parent_order_id
+        INNER JOIN products p ON oi.product_id = p.id
+        INNER JOIN users u ON oi.creator_id = u.id
+        WHERE
+            o.company_id = ?
+            AND u.role NOT IN ('Telesale','Supervisor Telesale')
+            AND o.order_date >= ?
+            AND o.order_date < ?
+            AND (p.category LIKE '%ปุ๋ย%' OR p.category = 'ชีวภัณฑ์')
+            AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND (oi.is_promotion_parent = 0 OR oi.is_promotion_parent IS NULL)
+            {$cancelled_filter}
+            {$access_filter}
+    ";
+    $stmt = $conn->prepare($totals_sql);
+    if ($stmt) {
+        $stmt->bind_param("iss", $company_id, $start_date, $end_date);
+        $stmt->execute();
+        $totals_result = $stmt->get_result();
+        if ($row = $totals_result->fetch_assoc()) {
+            $total_orders_distinct = intval($row['total_orders']);
+        }
+        $stmt->close();
+    }
+
+    // Merge prev_month_sales + cancelled/returned/baddebt into by_salesperson
     foreach ($by_salesperson as &$person) {
         $uid = $person['user_id'];
         $person['target_amount'] = null; // No targets for Admin Page
         $person['prev_month_sales'] = isset($prev_sales[$uid]) ? $prev_sales[$uid] : 0;
-        $person['cancelled_amount'] = 0;
+        $person['cancelled_amount'] = isset($cancelled_amounts[$uid]) ? $cancelled_amounts[$uid] : 0;
+        $person['baddebt_amount'] = isset($baddebt_amounts[$uid]) ? $baddebt_amounts[$uid] : 0;
+        $person['returned_amount'] = isset($returned_amounts[$uid]) ? $returned_amounts[$uid] : 0;
+        $person['returned_count'] = isset($returned_counts[$uid]) ? $returned_counts[$uid] : 0;
+        $person['cancelled_by_type'] = isset($cancelled_by_type[$uid]) ? $cancelled_by_type[$uid] : new \stdClass();
+        // supervisor_id = null because Admin Page has no hierarchy
+        $person['supervisor_id'] = null;
     }
+    unset($person);
 
     // Query 4: Sales by Platform
     $platform_sql = "
@@ -278,7 +451,9 @@ try {
             'summary' => $summary,
             'by_salesperson' => $by_salesperson,
             'by_platform' => $by_platform,
-            'by_page' => $by_page
+            'by_page' => $by_page,
+            'total_orders_distinct' => $total_orders_distinct,
+            'cancellation_types' => $cancellation_types
         ],
         'meta' => [
             'days_in_month' => $days_in_month,

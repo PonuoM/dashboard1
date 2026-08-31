@@ -2,11 +2,11 @@ import { useState, useEffect, useRef } from 'react'
 import './App.css'
 import logo from './components/icon/logo.png'
 
-function Login({ onLogin }) {
+function Login({ onLogin, initialError = '' }) {
     const [username, setUsername] = useState('')
     const [password, setPassword] = useState('')
     const [rememberMe, setRememberMe] = useState(false)
-    const [error, setError] = useState('')
+    const [error, setError] = useState(initialError)
     const [loading, setLoading] = useState(false)
     const canvasRef = useRef(null)
 

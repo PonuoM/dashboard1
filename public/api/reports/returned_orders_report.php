@@ -62,6 +62,7 @@ try {
 $company_id = isset($_GET['company_id']) ? intval($_GET['company_id']) : 0;
 $month = isset($_GET['month']) ? intval($_GET['month']) : date('n');
 $year = isset($_GET['year']) ? intval($_GET['year']) : date('Y');
+$user_id = isset($_GET['user_id']) ? intval($_GET['user_id']) : 0;
 
 if ($company_id <= 0) {
     echo json_encode(['success' => false, 'message' => 'company_id is required']);
@@ -77,13 +78,62 @@ if ($month === 0) {
     $end_date = date('Y-m-d 00:00:00', strtotime($start_date . ' +1 month'));
 }
 
+// Optional explicit date range (วันนี้ / เมื่อวาน / กำหนดวัน) — overrides month/year ถ้ามี
+require_once __DIR__ . '/../helpers/date_filter.php';
+$__r = resolve_date_range();
+if ($__r) { $start_date = $__r['start']; $end_date = $__r['end_excl']; }
+
+// Build access control filter based on user role
+// Supervisor Telesale: self + subordinates | Telesale: self only | Admin Control/others: all
+$access_filter = "";
+if ($user_id > 0) {
+    $role_stmt = $conn->prepare("SELECT role FROM users WHERE id = ?");
+    $role_stmt->bind_param('i', $user_id);
+    $role_stmt->execute();
+    $role_result = $role_stmt->get_result();
+    $user_role = '';
+    if ($row = $role_result->fetch_assoc()) {
+        $user_role = $row['role'];
+    }
+    $role_stmt->close();
+
+    if ($user_role === 'Supervisor Telesale') {
+        $sub_stmt = $conn->prepare("SELECT id FROM users WHERE supervisor_id = ?");
+        $sub_stmt->bind_param('i', $user_id);
+        $sub_stmt->execute();
+        $sub_result = $sub_stmt->get_result();
+        $allowed_user_ids = [$user_id];
+        while ($sub_row = $sub_result->fetch_assoc()) {
+            $allowed_user_ids[] = intval($sub_row['id']);
+        }
+        $sub_stmt->close();
+        $ids_str = implode(',', $allowed_user_ids);
+        $access_filter = " AND COALESCE(oi.creator_id, o.creator_id) IN ($ids_str)";
+    } elseif ($user_role === 'Telesale' || $user_role === 'Admin Page') {
+        $access_filter = " AND COALESCE(oi.creator_id, o.creator_id) = $user_id";
+    }
+    // Admin Control or other roles: no filter (see all)
+}
+
 try {
     // ──────────────────────────────────────────
-    // Query 1: Get all returned orders with details
+    // Query 1: Get all returned BOXES with details
+    //
+    // ตีกลับถูกบันทึกที่ระดับ "กล่อง" (order_boxes.status='RETURNED')
+    // ไม่ใช่ระดับออเดอร์ — ออเดอร์ที่มีหลายกล่องอาจรับบางกล่อง/คืนบางกล่อง
+    // (partial return) และบางออเดอร์ order_status ยังเป็น 'Delivered'
+    // ทั้งที่มีกล่องตีกลับ. เราจึงไล่จาก order_boxes แล้ว map สินค้าใน
+    // กล่องด้วย box_number (order_items.box_number = order_boxes.box_number).
+    // ยอดเงินตีกลับ = COD ของกล่องที่คืน (ob.cod_amount).
     // ──────────────────────────────────────────
     $sql = "
-        SELECT 
+        SELECT
             o.id AS order_id,
+            ob.id AS box_id,
+            ob.box_number,
+            ob.return_status,
+            ob.return_created_at,
+            o.order_status,
             o.order_date,
             o.delivery_date,
             o.customer_id,
@@ -95,25 +145,29 @@ try {
             u.phone AS sales_phone,
             u.supervisor_id,
             GROUP_CONCAT(CONCAT(p.name, ' x', oi.quantity) ORDER BY p.name SEPARATOR ', ') AS products,
-            COALESCE(SUM(oi.net_total), 0) AS net_total
-        FROM orders o
-        INNER JOIN order_items oi ON o.id = oi.parent_order_id
+            COALESCE(ob.cod_amount, 0) AS net_total,
+            COALESCE(SUM(oi.net_total), 0) AS box_item_total
+        FROM order_boxes ob
+        INNER JOIN orders o ON o.id = ob.order_id
+        INNER JOIN order_items oi ON oi.parent_order_id = ob.order_id AND oi.box_number = ob.box_number
         INNER JOIN products p ON oi.product_id = p.id
         INNER JOIN users u ON COALESCE(oi.creator_id, o.creator_id) = u.id
         LEFT JOIN customers c ON o.customer_id = c.customer_id
-        WHERE 
+        WHERE
             o.company_id = ?
-            AND o.order_status = 'Returned'
+            AND ob.status = 'RETURNED'
             AND o.order_date >= ?
             AND o.order_date < ?
-            AND u.role IN ('Telesale', 'Supervisor Telesale')
+            AND u.role IN ('Telesale', 'Supervisor Telesale', 'Admin Page')
             AND (p.category LIKE '%ปุ๋ย%' OR p.category = 'ชีวภัณฑ์')
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
             AND (oi.is_promotion_parent = 0 OR oi.is_promotion_parent IS NULL)
-        GROUP BY o.id, o.order_date, o.delivery_date, o.customer_id, 
+            $access_filter
+        GROUP BY ob.id, ob.box_number, ob.return_status, ob.return_created_at, ob.cod_amount,
+                 o.id, o.order_status, o.order_date, o.delivery_date, o.customer_id,
                  c.first_name, c.phone, o.recipient_phone, COALESCE(oi.creator_id, o.creator_id),
                  u.first_name, u.phone, u.supervisor_id
-        ORDER BY u.first_name, o.order_date DESC
+        ORDER BY u.first_name, o.order_date DESC, ob.box_number
     ";
 
     $stmt = $conn->prepare($sql);
@@ -128,6 +182,7 @@ try {
     $orders = [];
     while ($row = $result->fetch_assoc()) {
         $row['net_total'] = floatval($row['net_total']);
+        $row['box_item_total'] = floatval($row['box_item_total']);
         $orders[] = $row;
     }
     $stmt->close();
@@ -269,6 +324,10 @@ try {
         
         $by_salesperson[$uid]['orders'][] = [
             'order_id' => $order['order_id'],
+            'box_number' => intval($order['box_number']),
+            'return_status' => $order['return_status'],
+            'return_created_at' => $order['return_created_at'],
+            'order_status' => $order['order_status'],
             'order_date' => $order['order_date'],
             'delivery_date' => $order['delivery_date'],
             'customer_name' => $order['customer_name'],
@@ -276,6 +335,7 @@ try {
             'recipient_phone' => $order['recipient_phone'],
             'products' => $order['products'],
             'net_total' => $order['net_total'],
+            'box_item_total' => $order['box_item_total'],
             'call_matches' => $order['call_matches']
         ];
     }

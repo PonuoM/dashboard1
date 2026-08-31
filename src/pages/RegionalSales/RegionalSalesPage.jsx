@@ -1,7 +1,9 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import * as d3Geo from 'd3-geo';
 import { interpolateRgb } from 'd3-interpolate';
-import { CustomSelect } from '../../components/UI';
+import { CustomSelect, DateRangeFilter } from '../../components/UI';
+import ProvinceProductsModal from '../../components/Modals/ProvinceProductsModal';
+import useDateRange from '../../hooks/useDateRange';
 
 function RegionalSalesPage({ user }) {
     const [geoData, setGeoData] = useState(null);
@@ -9,6 +11,7 @@ function RegionalSalesPage({ user }) {
     const [provinceSales, setProvinceSales] = useState({});
     const [regionData, setRegionData] = useState([]);
     const [selectedProvince, setSelectedProvince] = useState(null);
+    const [modalProvince, setModalProvince] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [tooltip, setTooltip] = useState({ show: false, x: 0, y: 0, province: '', sales: 0, orders: 0 });
@@ -25,6 +28,7 @@ function RegionalSalesPage({ user }) {
         const saved = sessionStorage.getItem('regionalSales_year');
         return saved ? parseInt(saved) : currentDate.getFullYear();
     });
+    const dateRange = useDateRange('regionalSales');
     const [department, setDepartment] = useState(() => {
         const saved = sessionStorage.getItem('regionalSales_department');
         return saved || 'all';
@@ -57,7 +61,6 @@ function RegionalSalesPage({ user }) {
         fetch('/assets/thailand-provinces.geojson')
             .then(res => res.json())
             .then(data => {
-                console.log('GeoJSON loaded:', data.features?.length, 'provinces');
                 setGeoData(data);
             })
             .catch(err => {
@@ -80,6 +83,10 @@ function RegionalSalesPage({ user }) {
                     department: department,
                     user_id: user.id || ''
                 });
+                if (dateRange.active) {
+                    params.set('start_date', dateRange.startParam);
+                    params.set('end_date', dateRange.endParam);
+                }
                 const response = await fetch(`./api/reports/regional_sales.php?${params}`);
                 if (!response.ok) throw new Error('API Error');
                 const result = await response.json();
@@ -111,7 +118,7 @@ function RegionalSalesPage({ user }) {
         };
 
         fetchSalesData();
-    }, [user?.company_id, month, year, department]);
+    }, [user?.company_id, month, year, department, dateRange.key]);
 
     // Calculate max sales for color scale - use log scale for better contrast
     const salesValues = Object.values(provinceSales).map(p => p.sales).filter(s => s > 0);
@@ -139,6 +146,36 @@ function RegionalSalesPage({ user }) {
         if (value >= 1000) return `${(value / 1000).toFixed(0)}k`;
         return value.toString();
     };
+
+    // Provinces sorted by sales (copy to avoid mutating state)
+    const sortedProvinces = useMemo(
+        () => [...provinceData].sort((a, b) => b.total_sales - a.total_sales),
+        [provinceData]
+    );
+
+    // Aggregate summary numbers (computed once per data change)
+    const summary = useMemo(() => {
+        return provinceData.reduce((acc, p) => {
+            acc.totalSales += p.total_sales || 0;
+            if (p.total_sales > 0) acc.provincesWithSales += 1;
+            acc.totalNew += p.new_customer_sales || 0;
+            acc.totalReorder += p.reorder_customer_sales || 0;
+            acc.totalFert += p.fertilizer_sales || 0;
+            acc.totalBio += p.bio_sales || 0;
+            acc.totalOther += p.other_category_sales || 0;
+            return acc;
+        }, {
+            totalSales: 0,
+            provincesWithSales: 0,
+            totalNew: 0,
+            totalReorder: 0,
+            totalFert: 0,
+            totalBio: 0,
+            totalOther: 0,
+        });
+    }, [provinceData]);
+
+    const topProvince = sortedProvinces[0];
 
     // Render map
     const renderMap = () => {
@@ -230,21 +267,24 @@ function RegionalSalesPage({ user }) {
                         options={departments}
                     />
                     <div className="w-px h-6 bg-gray-200"></div>
-                    <CustomSelect
-                        value={month}
-                        onChange={(val) => setMonth(val)}
-                        options={months}
-                    />
-                    <div className="w-px h-6 bg-gray-200"></div>
-                    <CustomSelect
-                        value={year}
-                        onChange={(val) => setYear(val)}
-                        options={[
-                            { value: 2026, label: '2026' },
-                            { value: 2025, label: '2025' },
-                            { value: 2024, label: '2024' },
-                        ]}
-                    />
+                    <DateRangeFilter value={dateRange} />
+                    <div className={dateRange.active ? 'opacity-50 pointer-events-none flex items-center gap-2' : 'flex items-center gap-2'}>
+                        <CustomSelect
+                            value={month}
+                            onChange={(val) => setMonth(val)}
+                            options={months}
+                        />
+                        <div className="w-px h-6 bg-gray-200"></div>
+                        <CustomSelect
+                            value={year}
+                            onChange={(val) => setYear(val)}
+                            options={[
+                                { value: 2026, label: '2026' },
+                                { value: 2025, label: '2025' },
+                                { value: 2024, label: '2024' },
+                            ]}
+                        />
+                    </div>
                 </div>
             </div>
 
@@ -325,14 +365,14 @@ function RegionalSalesPage({ user }) {
                         <div className="text-center p-2 bg-primary/5 rounded-lg">
                             <div className="text-[10px] text-gray-500 mb-1">ยอดขายรวม</div>
                             <div className="text-sm font-bold text-primary">
-                                ฿{provinceData.reduce((sum, p) => sum + (p.total_sales || 0), 0).toLocaleString()}
+                                ฿{summary.totalSales.toLocaleString()}
                             </div>
                         </div>
                         {/* Provinces with Sales */}
                         <div className="text-center p-2 bg-blue-50 rounded-lg">
                             <div className="text-[10px] text-gray-500 mb-1">จังหวัดที่มียอด</div>
                             <div className="text-sm font-bold text-blue-600">
-                                {provinceData.filter(p => p.total_sales > 0).length} จังหวัด
+                                {summary.provincesWithSales} จังหวัด
                             </div>
                         </div>
                     </div>
@@ -346,14 +386,14 @@ function RegionalSalesPage({ user }) {
                             <img src="/icons/championship.png" alt="Top" className="w-5 h-5" />
                             <span className="text-xs font-bold text-gray-600">จังหวัดขายดีที่สุด</span>
                         </div>
-                        {provinceData[0] && (
+                        {topProvince && (
                             <div>
-                                <div className="font-bold text-gray-800">{provinceData.sort((a, b) => b.total_sales - a.total_sales)[0]?.province_name}</div>
+                                <div className="font-bold text-gray-800">{topProvince.province_name}</div>
                                 <div className="text-sm text-primary font-bold">
-                                    ฿{provinceData.sort((a, b) => b.total_sales - a.total_sales)[0]?.total_sales.toLocaleString()}
+                                    ฿{topProvince.total_sales?.toLocaleString()}
                                 </div>
                                 <div className="text-[10px] text-gray-400">
-                                    {provinceData.sort((a, b) => b.total_sales - a.total_sales)[0]?.order_count} ออเดอร์
+                                    {topProvince.order_count} ออเดอร์
                                 </div>
                             </div>
                         )}
@@ -369,8 +409,8 @@ function RegionalSalesPage({ user }) {
                             <span className="text-xs font-bold text-gray-600">ลูกค้าใหม่ vs รีออเดอร์</span>
                         </div>
                         {(() => {
-                            const totalNew = provinceData.reduce((sum, p) => sum + (p.new_customer_sales || 0), 0);
-                            const totalReorder = provinceData.reduce((sum, p) => sum + (p.reorder_customer_sales || 0), 0);
+                            const totalNew = summary.totalNew;
+                            const totalReorder = summary.totalReorder;
                             const total = totalNew + totalReorder;
                             const newPercent = total > 0 ? ((totalNew / total) * 100).toFixed(1) : 0;
                             const reorderPercent = total > 0 ? ((totalReorder / total) * 100).toFixed(1) : 0;
@@ -422,9 +462,9 @@ function RegionalSalesPage({ user }) {
                             <span className="text-xs font-bold text-gray-600">สัดส่วนสินค้า</span>
                         </div>
                         {(() => {
-                            const totalFert = provinceData.reduce((sum, p) => sum + (p.fertilizer_sales || 0), 0);
-                            const totalBio = provinceData.reduce((sum, p) => sum + (p.bio_sales || 0), 0);
-                            const totalOther = provinceData.reduce((sum, p) => sum + (p.other_category_sales || 0), 0);
+                            const totalFert = summary.totalFert;
+                            const totalBio = summary.totalBio;
+                            const totalOther = summary.totalOther;
                             const total = totalFert + totalBio + totalOther;
                             return (
                                 <div className="space-y-1">
@@ -554,19 +594,25 @@ function RegionalSalesPage({ user }) {
                             </thead>
                             <tbody>
                                 {(() => {
-                                    const totalAllSales = provinceData.reduce((sum, p) => sum + (p.total_sales || 0), 0);
-                                    return provinceData
-                                        .sort((a, b) => b.total_sales - a.total_sales)
+                                    const totalAllSales = summary.totalSales;
+                                    return sortedProvinces
                                         .map((prov, idx) => {
                                             const percent = totalAllSales > 0 ? ((prov.total_sales / totalAllSales) * 100).toFixed(1) : 0;
                                             return (
                                                 <tr
                                                     key={idx}
                                                     className={`border-b border-gray-50 hover:bg-primary/5 cursor-pointer transition-colors ${selectedProvince === prov.province_name ? 'bg-primary/10' : ''}`}
-                                                    onClick={() => setSelectedProvince(prev => prev === prov.province_name ? null : prov.province_name)}
+                                                    onClick={() => {
+                                                        setSelectedProvince(prov.province_name);
+                                                        setModalProvince(prov);
+                                                    }}
+                                                    title="คลิกเพื่อดูสินค้าที่ขายในจังหวัดนี้"
                                                 >
                                                     <td className="py-2 pr-2">
-                                                        <div className="font-medium text-gray-800 text-xs">{prov.province_name}</div>
+                                                        <div className="font-medium text-gray-800 text-xs flex items-center gap-1">
+                                                            {prov.province_name}
+                                                            <span className="material-symbols-outlined text-[14px] text-gray-300">open_in_new</span>
+                                                        </div>
                                                         {prov.region_name && (
                                                             <div className="text-[10px] text-gray-400">{prov.region_name}</div>
                                                         )}
@@ -655,6 +701,20 @@ function RegionalSalesPage({ user }) {
                     </div>
                 </div>
             </div>
+
+            {/* Province Products Modal */}
+            <ProvinceProductsModal
+                isOpen={!!modalProvince}
+                onClose={() => setModalProvince(null)}
+                province={modalProvince?.province_name}
+                regionName={modalProvince?.region_name}
+                companyId={user?.company_id}
+                month={month}
+                year={year}
+                department={department}
+                userId={user?.id}
+                dateRange={dateRange}
+            />
         </div >
     );
 }

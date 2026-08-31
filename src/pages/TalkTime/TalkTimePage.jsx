@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { TalkTimeDetailPage } from './TalkTimeDetailPage';
+import { DateRangeFilter } from '../../components/UI';
+import useDateRange from '../../hooks/useDateRange';
 
 export function TalkTimePage({ user }) {
     const [data, setData] = useState([]);
@@ -17,6 +19,8 @@ export function TalkTimePage({ user }) {
         const saved = sessionStorage.getItem('talkTime_selectedYear');
         return saved ? parseInt(saved) : new Date().getFullYear();
     });
+
+    const dateRange = useDateRange('talkTime');
 
     // State for detail view
     const [selectedUser, setSelectedUser] = useState(null);
@@ -44,7 +48,7 @@ export function TalkTimePage({ user }) {
 
     useEffect(() => {
         fetchData();
-    }, [selectedMonth, selectedYear]);
+    }, [selectedMonth, selectedYear, dateRange.key]);
 
     const fetchData = async () => {
         setLoading(true);
@@ -52,7 +56,7 @@ export function TalkTimePage({ user }) {
             const companyId = user?.company_id || '';
             const userId = user?.id || '';
             const response = await fetch(
-                `./api/reports/talk_time.php?year=${selectedYear}&month=${selectedMonth}&company_id=${companyId}&user_id=${userId}`
+                `./api/reports/talk_time.php?year=${selectedYear}&month=${selectedMonth}&company_id=${companyId}&user_id=${userId}${dateRange.params}`
             );
             const result = await response.json();
             if (result.success) {
@@ -159,24 +163,27 @@ export function TalkTimePage({ user }) {
 
                 {/* Filters */}
                 <div className="flex gap-3">
-                    <select
-                        value={selectedMonth}
-                        onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
-                        className="px-4 py-2 rounded-xl border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-primary/20"
-                    >
-                        {months.map((m) => (
-                            <option key={m.value} value={m.value}>{m.label}</option>
-                        ))}
-                    </select>
-                    <select
-                        value={selectedYear}
-                        onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-                        className="px-4 py-2 rounded-xl border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-primary/20"
-                    >
-                        {[2024, 2025, 2026].map((y) => (
-                            <option key={y} value={y}>{y}</option>
-                        ))}
-                    </select>
+                    <DateRangeFilter value={dateRange} />
+                    <div className={dateRange.active ? 'opacity-50 pointer-events-none flex gap-3' : 'flex gap-3'}>
+                        <select
+                            value={selectedMonth}
+                            onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
+                            className="px-4 py-2 rounded-xl border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-primary/20"
+                        >
+                            {months.map((m) => (
+                                <option key={m.value} value={m.value}>{m.label}</option>
+                            ))}
+                        </select>
+                        <select
+                            value={selectedYear}
+                            onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+                            className="px-4 py-2 rounded-xl border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-primary/20"
+                        >
+                            {[2024, 2025, 2026].map((y) => (
+                                <option key={y} value={y}>{y}</option>
+                            ))}
+                        </select>
+                    </div>
                 </div>
             </div>
 

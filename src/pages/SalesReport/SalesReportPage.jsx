@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { SummaryTable, TeamSalesCards } from '../../components/Tables';
-import { CustomSelect } from '../../components/UI';
+import { CustomSelect, DateRangeFilter } from '../../components/UI';
+import useDateRange from '../../hooks/useDateRange';
 import TargetManagementPage from '../TargetManagement/TargetManagementPage';
 import CancelledOrdersModal from '../../components/Modals/CancelledOrdersModal';
 
@@ -25,6 +26,9 @@ function SalesReportPage({ user }) {
         return saved ? parseInt(saved) : currentDate.getFullYear();
     });
     const [includeCancelled, setIncludeCancelled] = useState(false);
+
+    // Date range filter (วันนี้ / เมื่อวาน / กำหนดวัน) — overrides month/year when active
+    const dateRange = useDateRange('salesReport');
 
     const months = [
         { value: 0, label: 'ทั้งหมด' },
@@ -70,7 +74,7 @@ function SalesReportPage({ user }) {
 
     useEffect(() => {
         fetchData();
-    }, [month, year, includeCancelled, user?.company_id]);
+    }, [month, year, includeCancelled, user?.company_id, dateRange.key]);
 
     const fetchData = async () => {
         if (!user?.company_id) {
@@ -99,20 +103,12 @@ function SalesReportPage({ user }) {
                 include_cancelled: includeCancelled ? 1 : 0,
                 user_id: user.id || '',
             });
+            if (dateRange.active) {
+                params.set('start_date', dateRange.startParam);
+                params.set('end_date', dateRange.endParam);
+            }
 
-            // Fetch previous month data
-            const prevParams = new URLSearchParams({
-                company_id: user.company_id,
-                month: prevMonth,
-                year: prevYear,
-                include_cancelled: includeCancelled ? 1 : 0,
-                user_id: user.id || '',
-            });
-
-            const [response, prevResponse] = await Promise.all([
-                fetch(`./api/reports/sales.php?${params}`),
-                fetch(`./api/reports/sales.php?${prevParams}`)
-            ]);
+            const response = await fetch(`./api/reports/sales.php?${params}`);
 
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             const result = await response.json();
@@ -124,12 +120,24 @@ function SalesReportPage({ user }) {
                 setError(result.message || 'Failed to fetch data');
             }
 
-            // Process previous month data
-            if (prevResponse.ok) {
-                const prevResult = await prevResponse.json();
-                if (prevResult.success) {
-                    setPrevMonthData(prevResult.data);
+            // เปรียบเทียบเดือนก่อนหน้า เฉพาะโหมดปี/เดือน (ช่วงวันไม่มี baseline ที่ชัดเจน)
+            if (!dateRange.active) {
+                const prevParams = new URLSearchParams({
+                    company_id: user.company_id,
+                    month: prevMonth,
+                    year: prevYear,
+                    include_cancelled: includeCancelled ? 1 : 0,
+                    user_id: user.id || '',
+                });
+                const prevResponse = await fetch(`./api/reports/sales.php?${prevParams}`);
+                if (prevResponse.ok) {
+                    const prevResult = await prevResponse.json();
+                    if (prevResult.success) {
+                        setPrevMonthData(prevResult.data);
+                    }
                 }
+            } else {
+                setPrevMonthData(null);
             }
         } catch (err) {
             console.error('Fetch error:', err);
@@ -352,15 +360,19 @@ function SalesReportPage({ user }) {
                         รายงานยอดขาย Telesale
                     </h2>
                     <p className="text-xs text-gray-500">
-                        {month === 0 ? `ทั้งปี ${year}` : `${months.find(m => m.value === month)?.label} ${year}`}
+                        {dateRange.active
+                            ? (dateRange.start === dateRange.end ? dateRange.start : `${dateRange.start} → ${dateRange.end}`)
+                            : (month === 0 ? `ทั้งปี ${year}` : `${months.find(m => m.value === month)?.label} ${year}`)}
                     </p>
                 </div>
 
                 {/* Right - Controls */}
                 <div className="flex flex-wrap items-center gap-3">
 
+                    <DateRangeFilter value={dateRange} />
+
                     {/* Date Navigation Group - Symmetrical */}
-                    <div className="flex items-center gap-1 bg-white rounded-xl border border-gray-200 p-1">
+                    <div className={`flex items-center gap-1 bg-white rounded-xl border border-gray-200 p-1 ${dateRange.active ? 'opacity-50 pointer-events-none' : ''}`}>
                         {/* Previous Month Button */}
                         <button
                             onClick={goToPrevMonth}

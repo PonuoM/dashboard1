@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { CustomSelect, MultiSelect } from '../../components/UI';
+import { CustomSelect, MultiSelect, DateRangeFilter } from '../../components/UI';
+import useDateRange from '../../hooks/useDateRange';
 import OtherOrdersModal from '../../components/Modals/OtherOrdersModal';
 
 function DashboardPage({ user }) {
@@ -7,12 +8,26 @@ function DashboardPage({ user }) {
     const [error, setError] = useState(null);
     const [data, setData] = useState(null);
 
+    // Role-based data scope
+    // Telesale / Admin Page: เห็นเฉพาะของตัวเอง (backend บังคับอีกชั้น)
+    // Supervisor Telesale: เริ่มที่ตัวเอง เลือกดูลูกทีมได้ผ่าน dropdown
+    const roleLc = (user?.role || '').toLowerCase();
+    const isSelfOnly = roleLc === 'telesale' || roleLc === 'admin page' || user?.role_id === 3;
+    const isSupervisor = roleLc === 'supervisor telesale';
+    const [viewAsId, setViewAsId] = useState(0); // 0 = ตัวเอง (สำหรับ Supervisor)
+    // id ของคนที่ข้อมูลบนหน้าถูกกรองไว้ (null = เห็นทั้งบริษัท)
+    const viewedId = isSupervisor ? (viewAsId || user?.id) : (isSelfOnly ? user?.id : null);
+
     // Modal state for category details
     const [showCategoryDetail, setShowCategoryDetail] = useState(false);
     const [selectedCategory, setSelectedCategory] = useState(null);
 
+    // Modal state for channel details
+    const [showChannelDetail, setShowChannelDetail] = useState(false);
+    const [selectedChannel, setSelectedChannel] = useState(null);
+
     // Modal state for status drill-down
-    const [statusModal, setStatusModal] = useState({ isOpen: false, productId: null, productName: '', salespersonId: null, salespersonName: '', department: '', statusType: 'other' });
+    const [statusModal, setStatusModal] = useState({ isOpen: false, productId: null, productName: '', salespersonId: null, salespersonName: '', department: '', statusType: 'other', cancelTypeId: null });
 
     // Table Column Expansion state
     const [expandedColumns, setExpandedColumns] = useState({
@@ -28,11 +43,12 @@ function DashboardPage({ user }) {
     };
 
     const openStatusModal = (product, deptName, statusType) => {
-        setStatusModal({ isOpen: true, productId: product.product_id, productName: product.product_name, salespersonId: null, salespersonName: '', department: deptName, statusType });
+        // ถ้าหน้าถูกกรองรายบุคคลอยู่ (viewedId) ให้ drill-down กรองคนเดิมด้วย
+        setStatusModal({ isOpen: true, productId: product.product_id, productName: product.product_name, salespersonId: viewedId || null, salespersonName: '', department: deptName, statusType, cancelTypeId: null });
     };
 
-    const openSalespersonStatusModal = (salesperson, deptName, statusType) => {
-        setStatusModal({ isOpen: true, productId: null, productName: '', salespersonId: salesperson.user_id, salespersonName: salesperson.name, department: deptName, statusType });
+    const openSalespersonStatusModal = (salesperson, deptName, statusType, cancelTypeId = null) => {
+        setStatusModal({ isOpen: true, productId: null, productName: '', salespersonId: salesperson.user_id, salespersonName: salesperson.name, department: deptName, statusType, cancelTypeId });
     };
 
     // Client-side cache for instant month switching
@@ -61,6 +77,9 @@ function DashboardPage({ user }) {
         const oldSaved = sessionStorage.getItem('dashboard_year');
         return oldSaved ? [parseInt(oldSaved)] : [currentDate.getFullYear()];
     });
+
+    // Date range filter (วันนี้ / เมื่อวาน / กำหนดวัน) — overrides month/year when active
+    const dateRange = useDateRange('dashboard');
 
     // Save filter values to sessionStorage
     useEffect(() => {
@@ -95,10 +114,14 @@ function DashboardPage({ user }) {
         const yearSorted = [...year].sort((a, b) => a - b);
         const monthParam = monthSorted.length > 0 ? monthSorted.join(',') : '0';
         const yearParam = yearSorted.length > 0 ? yearSorted.join(',') : years.join(',');
-        const isAdminPage = user?.role === 'Admin Page' || user?.role_id === 3;
-        const selfId = isAdminPage && user?.id ? user.id : 0;
-        const cacheKey = `${monthParam}-${yearParam}-${selfId}`;
-        
+        const cacheKey = `${monthParam}-${yearParam}-${viewedId || 0}-${dateRange.key}`;
+
+        const companyId = user?.company_id || 1;
+        // user_id = คนดู (backend ตัดสินสิทธิ์เอง), salesperson_id = คนที่ขอดูข้อมูล
+        const viewerParam = user?.id ? `&user_id=${user.id}` : '';
+        const salespersonParam = viewedId ? `&salesperson_id=${viewedId}` : '';
+        const url = `./api/reports/dashboard.php?company_id=${companyId}&month=${monthParam}&year=${yearParam}${viewerParam}${salespersonParam}${dateRange.params}`;
+
         currentRequestRef.current = cacheKey;
         const cached = dataCache.current[cacheKey];
 
@@ -109,10 +132,6 @@ function DashboardPage({ user }) {
             setError(null);
             // Background refresh
             try {
-                const companyId = user?.company_id || 1;
-                const isAdminPage = user?.role === 'Admin Page' || user?.role_id === 3;
-                const salespersonParam = isAdminPage && user?.id ? `&salesperson_id=${user.id}` : '';
-                const url = `./api/reports/dashboard.php?company_id=${companyId}&month=${monthParam}&year=${yearParam}${salespersonParam}`;
                 const response = await fetch(url);
                 if (response.ok) {
                     const result = await response.json();
@@ -131,10 +150,6 @@ function DashboardPage({ user }) {
         setLoading(true);
         setError(null);
         try {
-            const companyId = user?.company_id || 1;
-            const isAdminPage = user?.role === 'Admin Page' || user?.role_id === 3;
-            const salespersonParam = isAdminPage && user?.id ? `&salesperson_id=${user.id}` : '';
-            const url = `./api/reports/dashboard.php?company_id=${companyId}&month=${monthParam}&year=${yearParam}${salespersonParam}`;
             const response = await fetch(url);
             if (!response.ok) throw new Error('HTTP error! status: ' + response.status);
             const result = await response.json();
@@ -160,7 +175,7 @@ function DashboardPage({ user }) {
 
     useEffect(() => {
         fetchData();
-    }, [month, year]);
+    }, [month, year, dateRange.key, viewAsId]);
 
 
 
@@ -253,6 +268,13 @@ function DashboardPage({ user }) {
                         {month.length === 0 ? `ปี ${year.length > 0 ? year.join(', ') : 'ทั้งหมด'}` : 
                          month.length === 1 ? `${monthsFull.find(m => m.value === month[0])?.label} ${year.length > 0 ? year.join(', ') : 'ทุกปี'}` :
                          `${month.length} เดือน ปี ${year.length > 0 ? year.join(', ') : 'ทั้งหมด'}`} • Performance Overview
+                        {viewedId && (
+                            <span className="text-primary font-semibold">
+                                {' '}• ข้อมูลของ {isSupervisor
+                                    ? (data?.team_members?.find(m => (viewAsId ? m.id === viewAsId : m.is_self))?.name || user?.first_name || '')
+                                    : (user?.first_name || user?.username || '')}
+                            </span>
+                        )}
                     </p>
                 </div>
                 <div className="flex items-center gap-3">
@@ -268,20 +290,35 @@ function DashboardPage({ user }) {
                             </div>
                         </div>
                     )}
-                    <MultiSelect
-                        options={months}
-                        value={month}
-                        onChange={setMonth}
-                        placeholder="เดือน"
-                        allLabel="ทุกเดือน"
-                    />
-                    <MultiSelect
-                        options={years.map(y => ({ value: y, label: y.toString() }))}
-                        value={year}
-                        onChange={setYear}
-                        placeholder="ปี"
-                        allLabel="ทุกปี"
-                    />
+                    {/* Supervisor: เลือกดูข้อมูลตัวเอง/ลูกทีม */}
+                    {isSupervisor && data?.team_members?.length > 0 && (
+                        <CustomSelect
+                            label="ดูข้อมูล"
+                            options={data.team_members.map(m => ({
+                                value: m.is_self ? 0 : m.id,
+                                label: m.is_self ? `${m.name} (ตัวเอง)` : m.name
+                            }))}
+                            value={viewAsId}
+                            onChange={setViewAsId}
+                        />
+                    )}
+                    <DateRangeFilter value={dateRange} />
+                    <div className={`flex items-center gap-3 ${dateRange.active ? 'opacity-50 pointer-events-none' : ''}`}>
+                        <MultiSelect
+                            options={months}
+                            value={month}
+                            onChange={setMonth}
+                            placeholder="เดือน"
+                            allLabel="ทุกเดือน"
+                        />
+                        <MultiSelect
+                            options={years.map(y => ({ value: y, label: y.toString() }))}
+                            value={year}
+                            onChange={setYear}
+                            placeholder="ปี"
+                            allLabel="ทุกปี"
+                        />
+                    </div>
                 </div>
             </header>
 
@@ -367,7 +404,7 @@ function DashboardPage({ user }) {
                                         <div 
                                             key={idx} 
                                             className={`rounded-xl border ${config.border} ${config.bg} p-3 cursor-pointer transition-all duration-200 shadow-sm hover:shadow-md hover:-translate-y-0.5 group`}
-                                            onClick={() => setStatusModal({ isOpen: true, productId: null, productName: '', salespersonId: null, salespersonName: '', department: '', statusType: s.status === 'Delivered' ? 'delivered' : s.status === 'Returned' ? 'returned' : s.status === 'Cancelled' ? 'cancelled' : s.status === 'BadDebt' ? 'baddebt' : s.status })}
+                                            onClick={() => setStatusModal({ isOpen: true, productId: null, productName: '', salespersonId: viewedId || null, salespersonName: '', department: '', statusType: s.status === 'Delivered' ? 'delivered' : s.status === 'Returned' ? 'returned' : s.status === 'Cancelled' ? 'cancelled' : s.status === 'BadDebt' ? 'baddebt' : s.status, cancelTypeId: null })}
                                         >
                                             <div className="flex items-start justify-between mb-2">
                                                 <div className={`p-1.5 rounded-lg bg-white/50 ${config.text}`}>
@@ -401,7 +438,7 @@ function DashboardPage({ user }) {
                         <div className="glass-card p-6 rounded-2xl lg:col-span-2">
                             <h3 className="text-base font-bold mb-4 flex items-center gap-2">
                                 <span className="material-symbols-outlined text-primary">bar_chart</span>
-                                ยอดขายรายเดือน {year}
+                                ยอดขายรายเดือน {year.join(', ')}
                             </h3>
                             <div className="flex items-end justify-between gap-1" style={{ height: '160px' }}>
                                 {data.monthly_sales?.map((m, idx) => {
@@ -441,14 +478,30 @@ function DashboardPage({ user }) {
                             <h3 className="text-base font-bold mb-4 flex items-center gap-2">
                                 <span className="material-symbols-outlined text-primary">share</span>
                                 ช่องทางการขาย
+                                <span className="text-xs text-gray-400 font-normal ml-auto">กดเพื่อดูรายละเอียด</span>
                             </h3>
                             <div className="flex flex-col gap-3">
                                 {data.by_channel?.slice(0, 5).map((ch, idx) => {
                                     const percent = ((parseFloat(ch.total_sales) / totalChannelSales) * 100);
+                                    const hasDetails = data.channel_details?.[ch.channel]?.length > 0;
                                     return (
-                                        <div key={idx} className="space-y-1">
-                                            <div className="flex justify-between text-xs font-bold">
-                                                <span>{ch.channel}</span>
+                                        <div
+                                            key={idx}
+                                            className={`space-y-1 p-2 -mx-2 rounded-lg transition-colors ${hasDetails ? 'hover:bg-white/50 cursor-pointer' : ''}`}
+                                            onClick={() => {
+                                                if (hasDetails) {
+                                                    setSelectedChannel(ch.channel);
+                                                    setShowChannelDetail(true);
+                                                }
+                                            }}
+                                        >
+                                            <div className="flex justify-between items-center text-xs font-bold">
+                                                <span className="flex items-center gap-1">
+                                                    {ch.channel}
+                                                    {hasDetails && (
+                                                        <span className="material-symbols-outlined text-gray-400 text-sm">chevron_right</span>
+                                                    )}
+                                                </span>
                                                 <span>฿{formatCurrency(ch.total_sales)}</span>
                                             </div>
                                             <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
@@ -800,6 +853,7 @@ function DashboardPage({ user }) {
                                                 </th>
                                                 
                                                 <th colSpan="2" rowSpan={(expandedColumns.returned || expandedColumns.cancelled) ? "2" : "1"} className="py-1 font-bold text-center text-purple-600 bg-purple-50 border-b border-r-2 border-gray-200 align-middle">🟣 หนี้สูญ</th>
+                                                <th colSpan="2" rowSpan={(expandedColumns.returned || expandedColumns.cancelled) ? "2" : "1"} className="py-1 font-bold text-center text-orange-600 bg-orange-50 border-b border-r-2 border-gray-200 align-middle" title="ออเดอร์ส่งสำเร็จแต่ยังไม่ได้รับเงินครบ">💸 ค้างชำระ</th>
                                                 <th colSpan="2" rowSpan={(expandedColumns.returned || expandedColumns.cancelled) ? "2" : "1"} className="py-1 font-bold text-center text-amber-600 bg-amber-50/60 border-b border-amber-100 align-middle">🟡 อื่นๆ</th>
                                             </tr>
 
@@ -876,7 +930,10 @@ function DashboardPage({ user }) {
                                                 
                                                 <th className="py-1 px-2 font-semibold text-center text-purple-500 bg-purple-50/60 border-r border-purple-100">จำนวน</th>
                                                 <th className="py-1 px-2 font-semibold text-right text-purple-500 bg-purple-50/60 border-r-2 border-gray-200">ยอด</th>
-                                                
+
+                                                <th className="py-1 px-2 font-semibold text-center text-orange-600 bg-orange-50/80 border-r border-orange-100">จำนวน</th>
+                                                <th className="py-1 px-2 font-semibold text-right text-orange-600 bg-orange-50/80 border-r-2 border-gray-200">ยอด</th>
+
                                                 <th className="py-1 px-2 font-semibold text-center text-amber-500 bg-amber-50/40 border-r border-amber-100">จำนวน</th>
                                                 <th className="py-1 px-2 font-semibold text-right text-amber-500 bg-amber-50/40">ยอด</th>
                                             </tr>
@@ -940,7 +997,11 @@ function DashboardPage({ user }) {
                                                     {/* Bad Debt */}
                                                     <td className={`text-center font-bold text-purple-600 px-2 bg-purple-50/10 ${person.baddebt_orders > 0 ? 'cursor-pointer hover:bg-purple-100 hover:underline' : ''}`} onClick={(e) => { if(person.baddebt_orders > 0) { e.stopPropagation(); openSalespersonStatusModal(person, deptName, 'baddebt'); } }}>{person.baddebt_orders > 0 ? formatCurrency(person.baddebt_orders) : '-'}</td>
                                                     <td className={`text-right text-purple-600 font-kanit px-2 bg-purple-50/10 border-r-2 border-gray-200 ${person.baddebt_sales > 0 ? 'cursor-pointer hover:bg-purple-100 hover:underline' : ''}`} onClick={(e) => { if(person.baddebt_sales > 0) { e.stopPropagation(); openSalespersonStatusModal(person, deptName, 'baddebt'); } }}>{person.baddebt_sales > 0 ? `฿${formatCurrency(person.baddebt_sales)}` : '-'}</td>
-                                                    
+
+                                                    {/* Unpaid (Delivered but not fully paid) */}
+                                                    <td className={`text-center font-bold text-orange-600 px-2 bg-orange-50/30 ${person.unpaid_orders > 0 ? 'cursor-pointer hover:bg-orange-100 hover:underline' : ''}`} title="ออเดอร์ส่งสำเร็จแต่ยังไม่ได้รับเงินครบ" onClick={(e) => { if(person.unpaid_orders > 0) { e.stopPropagation(); openSalespersonStatusModal(person, deptName, 'unpaid'); } }}>{person.unpaid_orders > 0 ? formatCurrency(person.unpaid_orders) : '-'}</td>
+                                                    <td className={`text-right text-orange-600 font-kanit font-bold px-2 bg-orange-50/30 border-r-2 border-gray-200 ${person.unpaid_sales > 0 ? 'cursor-pointer hover:bg-orange-100 hover:underline' : ''}`} title="ยอดค้างชำระตามสัดส่วน item ของพนักงาน" onClick={(e) => { if(person.unpaid_sales > 0) { e.stopPropagation(); openSalespersonStatusModal(person, deptName, 'unpaid'); } }}>{person.unpaid_sales > 0 ? `฿${formatCurrency(person.unpaid_sales)}` : '-'}</td>
+
                                                     {/* Others */}
                                                     <td className={`text-center font-bold text-amber-600 px-2 bg-amber-50/10 ${person.other_orders > 0 ? 'cursor-pointer hover:bg-amber-100 hover:underline' : ''}`} onClick={(e) => { if(person.other_orders > 0) { e.stopPropagation(); openSalespersonStatusModal(person, deptName, 'other'); } }}>{person.other_orders > 0 ? formatCurrency(person.other_orders) : '-'}</td>
                                                     <td className={`text-right text-amber-600 font-kanit px-2 bg-amber-50/10 ${person.other_sales > 0 ? 'cursor-pointer hover:bg-amber-100 hover:underline' : ''}`} onClick={(e) => { if(person.other_sales > 0) { e.stopPropagation(); openSalespersonStatusModal(person, deptName, 'other'); } }}>{person.other_sales > 0 ? `฿${formatCurrency(person.other_sales)}` : '-'}</td>
@@ -1017,6 +1078,76 @@ function DashboardPage({ user }) {
                             </span>
                             <button
                                 onClick={() => setShowCategoryDetail(false)}
+                                className="px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 font-bold"
+                            >
+                                ปิด
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Channel Details Modal */}
+            {showChannelDetail && selectedChannel && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[80vh] overflow-hidden flex flex-col">
+                        {/* Header */}
+                        <div className="flex items-center justify-between p-6 border-b border-gray-200">
+                            <h3 className="text-xl font-bold flex items-center gap-2">
+                                <span className="material-symbols-outlined text-primary">share</span>
+                                รายละเอียดสินค้า: {selectedChannel}
+                            </h3>
+                            <button
+                                onClick={() => setShowChannelDetail(false)}
+                                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                            >
+                                <span className="material-symbols-outlined">close</span>
+                            </button>
+                        </div>
+
+                        {/* Table Header */}
+                        <div className="px-6 bg-white border-b border-gray-200">
+                            <table className="w-full text-left table-fixed">
+                                <thead>
+                                    <tr className="text-gray-500 text-sm uppercase tracking-wider">
+                                        <th className="py-3 font-semibold" style={{ width: '40px' }}>#</th>
+                                        <th className="py-3 font-semibold" style={{ width: '40%' }}>ชื่อสินค้า</th>
+                                        <th className="py-3 font-semibold" style={{ width: '25%' }}>หมวดหมู่</th>
+                                        <th className="py-3 font-semibold text-center" style={{ width: '80px' }}>จำนวน</th>
+                                        <th className="py-3 font-semibold text-right" style={{ width: '120px' }}>ยอดขาย</th>
+                                    </tr>
+                                </thead>
+                            </table>
+                        </div>
+
+                        {/* Content */}
+                        <div className="flex-1 overflow-y-auto px-6">
+                            <table className="w-full text-left table-fixed">
+                                <tbody className="divide-y divide-gray-100">
+                                    {data.channel_details?.[selectedChannel]?.map((product, idx) => (
+                                        <tr key={idx} className="hover:bg-primary/5 transition-colors">
+                                            <td className="py-3 text-gray-400" style={{ width: '40px' }}>{idx + 1}</td>
+                                            <td className="py-3 font-medium truncate" style={{ width: '40%' }}>{product.product_name || 'ไม่ระบุ'}</td>
+                                            <td className="py-3 text-gray-500 text-sm" style={{ width: '25%' }}>
+                                                <span className="px-2 py-1 bg-gray-100 rounded text-xs">
+                                                    {product.original_category || '-'}
+                                                </span>
+                                            </td>
+                                            <td className="py-3 text-center" style={{ width: '80px' }}>{product.quantity}</td>
+                                            <td className="py-3 text-right font-kanit font-bold" style={{ width: '120px' }}>฿{formatCurrency(product.sales)}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {/* Footer */}
+                        <div className="p-4 border-t border-gray-200 bg-gray-50 flex justify-between items-center">
+                            <span className="text-sm text-gray-500">
+                                ทั้งหมด {data.channel_details?.[selectedChannel]?.length || 0} รายการ
+                            </span>
+                            <button
+                                onClick={() => setShowChannelDetail(false)}
                                 className="px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 font-bold"
                             >
                                 ปิด

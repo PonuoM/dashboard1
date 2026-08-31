@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { CustomSelect } from '../../components/UI';
+import { CustomSelect, DateRangeFilter } from '../../components/UI';
+import useDateRange from '../../hooks/useDateRange';
 
 function PageAnalysisPage({ user }) {
     const [loading, setLoading] = useState(true);
@@ -17,6 +18,8 @@ function PageAnalysisPage({ user }) {
         return saved ? parseInt(saved) : currentDate.getFullYear();
     });
 
+    const dateRange = useDateRange('pageAnalysis');
+
     const months = [
         { value: 1, label: 'มกราคม' }, { value: 2, label: 'กุมภาพันธ์' }, { value: 3, label: 'มีนาคม' },
         { value: 4, label: 'เมษายน' }, { value: 5, label: 'พฤษภาคม' }, { value: 6, label: 'มิถุนายน' },
@@ -32,7 +35,7 @@ function PageAnalysisPage({ user }) {
 
     useEffect(() => {
         fetchData();
-    }, [month, year, user?.company_id]);
+    }, [month, year, user?.company_id, dateRange.key]);
 
     const fetchData = async () => {
         if (!user?.company_id) return;
@@ -42,8 +45,13 @@ function PageAnalysisPage({ user }) {
             const params = new URLSearchParams({
                 company_id: user.company_id,
                 month,
-                year
+                year,
+                user_id: user.id || ''
             });
+            if (dateRange.active) {
+                params.set('start_date', dateRange.startParam);
+                params.set('end_date', dateRange.endParam);
+            }
             const response = await fetch(`./api/reports/page_analysis.php?${params}`);
             const result = await response.json();
 
@@ -81,21 +89,24 @@ function PageAnalysisPage({ user }) {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3">
-                    <div className="flex items-center gap-1 bg-white rounded-xl border border-gray-200 p-1">
-                        <CustomSelect
-                            value={month}
-                            onChange={(val) => setMonth(val)}
-                            options={months}
-                        />
-                        <div className="w-px h-6 bg-gray-200"></div>
-                        <CustomSelect
-                            value={year}
-                            onChange={(val) => setYear(val)}
-                            options={[
-                                { value: 2026, label: '2026' },
-                                { value: 2025, label: '2025' },
-                            ]}
-                        />
+                    <DateRangeFilter value={dateRange} />
+                    <div className={dateRange.active ? 'opacity-50 pointer-events-none' : ''}>
+                        <div className="flex items-center gap-1 bg-white rounded-xl border border-gray-200 p-1">
+                            <CustomSelect
+                                value={month}
+                                onChange={(val) => setMonth(val)}
+                                options={months}
+                            />
+                            <div className="w-px h-6 bg-gray-200"></div>
+                            <CustomSelect
+                                value={year}
+                                onChange={(val) => setYear(val)}
+                                options={[
+                                    { value: 2026, label: '2026' },
+                                    { value: 2025, label: '2025' },
+                                ]}
+                            />
+                        </div>
                     </div>
                 </div>
             </div>

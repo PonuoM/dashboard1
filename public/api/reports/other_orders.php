@@ -78,6 +78,8 @@ if ($status_type === 'delivered') {
     }
 } elseif ($status_type === 'baddebt') {
     $status_condition = "o.order_status = 'BadDebt'";
+} elseif ($status_type === 'unpaid') {
+    $status_condition = "o.order_status = 'Delivered' AND COALESCE(o.amount_paid, 0) < COALESCE(o.total_amount, 0) AND COALESCE(o.payment_status, '') <> 'Approved'";
 } elseif (in_array($status_type, ['Pending', 'Preparing', 'Shipping', 'Confirmed', 'Packing', 'Processing'])) {
     $status_condition = "o.order_status = '" . $conn->real_escape_string($status_type) . "'";
 } else {
@@ -157,13 +159,17 @@ $stmt->close();
 
 // 2. Get order details — use subquery to get distinct order IDs first
 // Build subquery-specific conditions with o2/u2 aliases
-$sub_status = str_replace(['o.order_status', 'oc.'], ['o2.order_status', 'oc2.'], $status_condition);
+$sub_status = str_replace(
+    ['o.order_status', 'o.amount_paid', 'o.total_amount', 'o.payment_status', 'oc.'],
+    ['o2.order_status', 'o2.amount_paid', 'o2.total_amount', 'o2.payment_status', 'oc2.'],
+    $status_condition
+);
 $sub_dept = str_replace('u.role', 'u2.role', $dept_condition);
 $sub_product = str_replace('o.creator_id', 'o2.creator_id', $product_condition);
 $sub_date = str_replace('o.order_date', 'o2.order_date', $date_condition);
 
 $orders_sql = "
-    SELECT 
+    SELECT
         o.id AS order_id,
         o.order_date,
         o.order_status,
@@ -171,6 +177,12 @@ $orders_sql = "
         o.payment_status,
         o.amount_paid,
         o.total_amount,
+        o.notes AS order_notes,
+        oc.notes AS cancel_notes,
+        ct.label AS cancel_type_name,
+        rb.return_statuses,
+        rb.return_notes,
+        rb.return_created_at,
         COALESCE(c.first_name, '') AS customer_name,
         COALESCE(c.phone, '') AS customer_phone,
         COALESCE(u.first_name, u.username) AS creator_name,
@@ -178,7 +190,7 @@ $orders_sql = "
         sub.item_qty,
         sub.item_total
     FROM (
-        SELECT 
+        SELECT
             oi.parent_order_id AS order_id,
             SUM(oi.quantity) AS item_qty,
             COALESCE(SUM(oi.net_total), 0) AS item_total
@@ -186,7 +198,7 @@ $orders_sql = "
         INNER JOIN orders o2 ON oi.parent_order_id = o2.id
         INNER JOIN users u2 ON COALESCE(oi.creator_id, o2.creator_id) = u2.id
         LEFT JOIN order_cancellations oc2 ON o2.id = oc2.order_id
-        WHERE 
+        WHERE
             o2.company_id = ?
             AND {$sub_date}
             AND {$sub_status}
@@ -199,6 +211,20 @@ $orders_sql = "
     INNER JOIN orders o ON sub.order_id = o.id
     LEFT JOIN users u ON o.creator_id = u.id
     LEFT JOIN customers c ON o.customer_id = c.customer_id
+    LEFT JOIN order_cancellations oc ON o.id = oc.order_id
+    LEFT JOIN cancellation_types ct ON oc.cancellation_type_id = ct.id
+    -- เหตุผลตีกลับถูกบันทึกที่ระดับกล่อง (order_boxes) ไม่ใช่ orders.notes
+    -- ออเดอร์เดียวอาจมีหลายกล่องตีกลับ (partial return) จึงรวมเป็นข้อความเดียว
+    LEFT JOIN (
+        SELECT
+            order_id,
+            GROUP_CONCAT(DISTINCT NULLIF(TRIM(return_status), '') SEPARATOR ',') AS return_statuses,
+            GROUP_CONCAT(DISTINCT NULLIF(TRIM(return_note), '') SEPARATOR ' | ') AS return_notes,
+            MAX(return_created_at) AS return_created_at
+        FROM order_boxes
+        WHERE status = 'RETURNED'
+        GROUP BY order_id
+    ) rb ON rb.order_id = o.id
     ORDER BY o.order_date DESC
 ";
 
@@ -215,23 +241,39 @@ $orders = [];
 $total_count = 0;
 $total_amount = 0;
 while ($row = $orders_result->fetch_assoc()) {
+    $item_total = floatval($row['item_total']);
+    $order_total = floatval($row['total_amount']);
+    $paid = floatval($row['amount_paid'] ?? 0);
+    // Proportional share of unpaid amount that belongs to this creator's items
+    $unpaid_share = ($order_total > 0 && $paid < $order_total)
+        ? $item_total * ($order_total - $paid) / $order_total
+        : 0;
+
     $orders[] = [
         'order_id' => $row['order_id'],
         'order_date' => $row['order_date'],
         'order_status' => $row['order_status'],
         'payment_method' => $row['payment_method'] ?? '',
         'payment_status' => $row['payment_status'] ?? '',
-        'amount_paid' => floatval($row['amount_paid'] ?? 0),
+        'amount_paid' => $paid,
         'customer_name' => $row['customer_name'],
         'customer_phone' => $row['customer_phone'],
         'creator_name' => $row['creator_name'],
         'creator_role' => $row['creator_role'],
         'item_qty' => intval($row['item_qty']),
-        'item_total' => floatval($row['item_total']),
-        'total_amount' => floatval($row['total_amount'])
+        'item_total' => $item_total,
+        'total_amount' => $order_total,
+        'unpaid_share' => $unpaid_share,
+        'order_notes' => $row['order_notes'] ?? '',
+        'cancel_notes' => $row['cancel_notes'] ?? '',
+        'cancel_type_name' => $row['cancel_type_name'] ?? '',
+        'return_status' => $row['return_statuses'] ?? '',
+        'return_note' => $row['return_notes'] ?? '',
+        'return_date' => $row['return_created_at'] ?? ''
     ];
     $total_count++;
-    $total_amount += floatval($row['item_total']);
+    // For unpaid view, summary = sum of unpaid shares; otherwise = sum of item totals
+    $total_amount += ($status_type === 'unpaid') ? $unpaid_share : $item_total;
 }
 $stmt2->close();
 

@@ -1,10 +1,13 @@
 import { useState, useEffect } from 'react';
+import { DateRangeFilter } from '../../components/UI';
+import useDateRange from '../../hooks/useDateRange';
 
 function AdsSummaryPage({ user }) {
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [month, setMonth] = useState(new Date().getMonth() + 1);
     const [year, setYear] = useState(new Date().getFullYear());
+    const dateRange = useDateRange('adsSummary');
 
     const formatNumber = (num) => {
         if (num === null || num === undefined || isNaN(num)) return '0.00';
@@ -21,7 +24,7 @@ function AdsSummaryPage({ user }) {
             setLoading(true);
             try {
                 const companyId = user?.company_id || 1;
-                const res = await fetch(`./api/reports/ads_summary.php?company_id=${companyId}&month=${month}&year=${year}`);
+                const res = await fetch(`./api/reports/ads_summary.php?company_id=${companyId}&month=${month}&year=${year}${dateRange.params}`);
                 const json = await res.json();
                 if (json.success) {
                     setData(json.data);
@@ -33,7 +36,7 @@ function AdsSummaryPage({ user }) {
             }
         };
         fetchData();
-    }, [user, month, year]);
+    }, [user, month, year, dateRange.key]);
 
     if (loading) {
         return (
@@ -77,24 +80,27 @@ function AdsSummaryPage({ user }) {
         <div className="space-y-6">
             {/* Filters */}
             <div className="flex items-center gap-4 flex-wrap">
-                <select
-                    value={month}
-                    onChange={e => setMonth(parseInt(e.target.value))}
-                    className="px-4 py-2 rounded-xl border border-gray-200 bg-white text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/30"
-                >
-                    {months.map((m, i) => (
-                        <option key={i + 1} value={i + 1}>{m}</option>
-                    ))}
-                </select>
-                <select
-                    value={year}
-                    onChange={e => setYear(parseInt(e.target.value))}
-                    className="px-4 py-2 rounded-xl border border-gray-200 bg-white text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/30"
-                >
-                    {[2025, 2026, 2027].map(y => (
-                        <option key={y} value={y}>{y}</option>
-                    ))}
-                </select>
+                <DateRangeFilter value={dateRange} />
+                <div className={dateRange.active ? 'opacity-50 pointer-events-none flex items-center gap-4 flex-wrap' : 'flex items-center gap-4 flex-wrap'}>
+                    <select
+                        value={month}
+                        onChange={e => setMonth(parseInt(e.target.value))}
+                        className="px-4 py-2 rounded-xl border border-gray-200 bg-white text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    >
+                        {months.map((m, i) => (
+                            <option key={i + 1} value={i + 1}>{m}</option>
+                        ))}
+                    </select>
+                    <select
+                        value={year}
+                        onChange={e => setYear(parseInt(e.target.value))}
+                        className="px-4 py-2 rounded-xl border border-gray-200 bg-white text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    >
+                        {[2025, 2026, 2027].map(y => (
+                            <option key={y} value={y}>{y}</option>
+                        ))}
+                    </select>
+                </div>
             </div>
 
             {/* Summary Cards */}

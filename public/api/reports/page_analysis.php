@@ -46,16 +46,22 @@ if ($user_id > 0) {
         $sub_stmt->close();
         $ids_str = implode(',', $allowed_user_ids);
         $access_filter = " AND o.creator_id IN ($ids_str)";
-    } elseif ($user_role === 'Telesale') {
+    } elseif ($user_role === 'Telesale' || $user_role === 'Admin Page') {
         $access_filter = " AND o.creator_id = $user_id";
         $allowed_user_ids[] = $user_id;
     }
-    // Admin or other roles: no filter (see all)
+    // Admin Control or other roles: no filter (see all)
 }
 
 // Build date range
 $start_date = sprintf('%04d-%02d-01', $year, $month);
 $end_date = date('Y-m-t', strtotime($start_date));
+
+// Optional explicit date range (วันนี้ / เมื่อวาน / กำหนดวัน) — overrides month/year ถ้ามี
+// หน้านี้ใช้รูปแบบวันที่ล้วน (Y-m-d) แล้วต่อท้าย ' 23:59:59' ตอน bind จึงตัดเอาเฉพาะส่วนวันที่
+require_once __DIR__ . '/../helpers/date_filter.php';
+$__r = resolve_date_range();
+if ($__r) { $start_date = substr($__r['start'], 0, 10); $end_date = substr($__r['end_incl'], 0, 10); }
 
 $response = [
     'success' => true,

@@ -18,6 +18,11 @@ if (!$company_id) {
 $start_date = sprintf('%04d-%02d-01', $year, $month);
 $end_date = date('Y-m-t', strtotime($start_date)) . ' 23:59:59';
 
+// Optional explicit date range (วันนี้ / เมื่อวาน / กำหนดวัน) — overrides month/year ถ้ามี
+require_once __DIR__ . '/../helpers/date_filter.php';
+$__r = resolve_date_range();
+if ($__r) { $start_date = $__r['start']; $end_date = $__r['end_incl']; }
+
 // 1. Get all active pages with sell_product_type and assigned user
 $pages_sql = "
     SELECT 

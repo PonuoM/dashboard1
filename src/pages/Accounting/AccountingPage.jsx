@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { CustomSelect } from '../../components/UI';
+import { CustomSelect, DateRangeFilter } from '../../components/UI';
+import useDateRange from '../../hooks/useDateRange';
 
 function AccountingPage({ user }) {
     const [loading, setLoading] = useState(true);
@@ -10,6 +11,8 @@ function AccountingPage({ user }) {
     const currentDate = new Date();
     const [month, setMonth] = useState(currentDate.getMonth() + 1);
     const [year, setYear] = useState(currentDate.getFullYear());
+
+    const dateRange = useDateRange('accounting');
 
     const months = [
         { value: 0, label: 'ทั้งหมด' },
@@ -36,6 +39,10 @@ function AccountingPage({ user }) {
             company_id: user?.company_id || 0,
             month, year: apiYear,
         });
+        if (dateRange.active) {
+            params.set('start_date', dateRange.startParam);
+            params.set('end_date', dateRange.endParam);
+        }
         fetch(`./api/reports/accounting.php?${params}`)
             .then(r => r.json())
             .then(result => {
@@ -46,7 +53,7 @@ function AccountingPage({ user }) {
             .finally(() => setLoading(false));
     };
 
-    useEffect(() => { fetchData(); }, [month, year]);
+    useEffect(() => { fetchData(); }, [month, year, dateRange.key]);
 
     const SummaryCard = ({ icon, label, value, sub, iconBg }) => (
         <div className="glass-card rounded-2xl p-5 hover:shadow-lg transition-shadow">
@@ -86,8 +93,11 @@ function AccountingPage({ user }) {
                     <p className="text-sm text-gray-500 mt-1">รายการเดินบัญชี · ตรวจสอบยอด · เก็บเงินปลายทาง</p>
                 </div>
                 <div className="flex items-center gap-3">
-                    <CustomSelect options={months} value={month} onChange={setMonth} />
-                    <CustomSelect options={years} value={year} onChange={setYear} />
+                    <DateRangeFilter value={dateRange} />
+                    <div className={dateRange.active ? 'flex items-center gap-3 opacity-50 pointer-events-none' : 'flex items-center gap-3'}>
+                        <CustomSelect options={months} value={month} onChange={setMonth} />
+                        <CustomSelect options={years} value={year} onChange={setYear} />
+                    </div>
                 </div>
             </div>
 

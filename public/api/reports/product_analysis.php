@@ -21,9 +21,21 @@ $company_id = isset($_GET['company_id']) ? intval($_GET['company_id']) : 1;
 $year = isset($_GET['year']) ? intval($_GET['year']) : date('Y');
 $department = isset($_GET['department']) ? $_GET['department'] : 'all';
 $user_id = isset($_GET['user_id']) ? intval($_GET['user_id']) : 0;
+// ดูเฉพาะรายบุคคล: เลือกพนักงานคนเดียว (creator_id) — 'all' หรือว่าง = ทุกคน
+$salesperson = (isset($_GET['salesperson']) && $_GET['salesperson'] !== '' && $_GET['salesperson'] !== 'all')
+    ? intval($_GET['salesperson'])
+    : 0;
 
 $start_date = "$year-01-01 00:00:00";
 $end_date = "$year-12-31 23:59:59";
+
+// Optional explicit date range (วันนี้ / เมื่อวาน / กำหนดวัน) — overrides year ถ้ามี
+require_once __DIR__ . '/../helpers/date_filter.php';
+$__r = resolve_date_range();
+if ($__r) {
+    $start_date = $__r['start'];
+    $end_date = $__r['end_incl']; // เงื่อนไขใช้ <= จึงใช้ end inclusive
+}
 
 // Build department filter based on user roles
 $dept_filter = "";
@@ -65,11 +77,16 @@ if ($user_id > 0) {
         $sub_stmt->close();
         $ids_str = implode(',', $allowed_user_ids);
         $access_filter = " AND o.creator_id IN ($ids_str)";
-    } elseif ($user_role === 'Telesale') {
+    } elseif ($user_role === 'Telesale' || $user_role === 'Admin Page') {
         $access_filter = " AND o.creator_id = $user_id";
         $allowed_user_ids[] = $user_id;
     }
-    // Admin or other roles: no filter (see all)
+    // Admin Control or other roles: no filter (see all)
+}
+
+// ดูเฉพาะรายบุคคล: จำกัดให้เหลือเฉพาะ creator_id ที่เลือก (ซ้อนบน access_filter เดิม จึงยังเคารพสิทธิ์การเข้าถึง)
+if ($salesperson > 0) {
+    $access_filter .= " AND o.creator_id = $salesperson";
 }
 
 // 1. Summary by Category
@@ -288,7 +305,95 @@ unset($prod);
 usort($products, function($a, $b) {
     return $b['total'] - $a['total'];
 });
-$monthly_products = array_slice(array_values($products), 0, 20);
+$monthly_products = array_slice(array_values($products), 0, 50);
+
+// 3b. Quantity Distribution per Order (จำนวนต่อออเดอร์) - with monthly breakdown
+$dist_sql = "
+    SELECT
+        product_name,
+        month_num,
+        qty_per_order,
+        COUNT(*) AS order_count
+    FROM (
+        SELECT
+            COALESCE(p.name, oi.product_name) AS product_name,
+            o.id AS order_id,
+            MONTH(o.order_date) AS month_num,
+            SUM(oi.quantity) AS qty_per_order
+        FROM order_items oi
+        INNER JOIN orders o ON oi.parent_order_id = o.id
+        LEFT JOIN products p ON oi.product_id = p.id
+        LEFT JOIN users u ON o.creator_id = u.id
+        WHERE o.company_id = $company_id
+            AND o.order_date >= '$start_date'
+            AND o.order_date <= '$end_date'
+            AND o.order_status != 'Cancelled'
+            AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND (oi.is_promotion_parent = 0 OR oi.is_promotion_parent IS NULL)
+            $dept_filter
+            $access_filter
+        GROUP BY COALESCE(p.name, oi.product_name), o.id, MONTH(o.order_date)
+    ) AS order_products
+    WHERE qty_per_order > 0
+    GROUP BY product_name, month_num, qty_per_order
+    ORDER BY product_name, month_num, qty_per_order
+";
+
+$result = $conn->query($dist_sql);
+$qty_dist_monthly_map = [];
+if ($result) {
+    while ($row = $result->fetch_assoc()) {
+        $name = $row['product_name'];
+        $month = intval($row['month_num']);
+        $qty = intval($row['qty_per_order']);
+        $count = intval($row['order_count']);
+        if ($qty < 1 || $month < 1 || $month > 12) continue;
+
+        if (!isset($qty_dist_monthly_map[$name])) {
+            $qty_dist_monthly_map[$name] = [];
+            for ($m = 1; $m <= 12; $m++) {
+                $qty_dist_monthly_map[$name][$m] = [
+                    'qtys' => (object)[], // actual qty -> count (no bucket cap)
+                    '_orders' => 0,
+                    '_qty' => 0,
+                ];
+            }
+        }
+        // Convert qtys back to array for accumulation, will re-cast to object later
+        if (is_object($qty_dist_monthly_map[$name][$month]['qtys'])) {
+            $qty_dist_monthly_map[$name][$month]['qtys'] = (array)$qty_dist_monthly_map[$name][$month]['qtys'];
+        }
+        $key = (string)$qty;
+        $existing = $qty_dist_monthly_map[$name][$month]['qtys'][$key] ?? 0;
+        $qty_dist_monthly_map[$name][$month]['qtys'][$key] = $existing + $count;
+        $qty_dist_monthly_map[$name][$month]['_orders'] += $count;
+        $qty_dist_monthly_map[$name][$month]['_qty'] += ($qty * $count);
+    }
+}
+
+// Build final structure for frontend with monthly breakdown
+$qty_distribution = [];
+foreach ($qty_dist_monthly_map as $name => $months) {
+    $total_orders = 0;
+    foreach ($months as $m_data) {
+        $total_orders += $m_data['_orders'];
+    }
+    // Ensure qtys is always an object (even when empty) for consistent JSON
+    foreach ($months as $m => &$m_data) {
+        if (is_array($m_data['qtys']) && empty($m_data['qtys'])) {
+            $m_data['qtys'] = (object)[];
+        }
+    }
+    unset($m_data);
+    $qty_distribution[] = [
+        'product_name' => $name,
+        'monthly' => $months,
+        'total_orders' => $total_orders,
+    ];
+}
+usort($qty_distribution, function($a, $b) {
+    return $b['total_orders'] - $a['total_orders'];
+});
 
 // 4. Monthly performance for charts (last 6 months)
 $perf_sql = "
@@ -364,13 +469,27 @@ foreach ($cat_perf as $cat => &$data) {
 }
 unset($data);
 
-// 5. Get employees for filter
+// 5. Get employees for filter (ดูเฉพาะรายบุคคล) — ปรับรายชื่อตามแผนกที่เลือก
+$emp_role_filter = " AND role IN ('Telesale', 'Supervisor Telesale', 'Admin Page')"; // all = คนที่สร้างออเดอร์
+if ($department === 'telesale') {
+    $emp_role_filter = " AND role IN ('Telesale', 'Supervisor Telesale')";
+} elseif ($department === 'admin') {
+    $emp_role_filter = " AND role = 'Admin Page'";
+} elseif ($department === 'others') {
+    $emp_role_filter = " AND role NOT IN ('Telesale', 'Supervisor Telesale', 'Admin Page')";
+}
+// ถ้าผู้ใช้ถูกจำกัดสิทธิ์ (Telesale/Supervisor) ให้ลิสต์เฉพาะคนที่ตัวเองเข้าถึงได้
+$emp_access_filter = "";
+if (!empty($allowed_user_ids)) {
+    $emp_access_filter = " AND id IN (" . implode(',', $allowed_user_ids) . ")";
+}
 $emp_sql = "
     SELECT id, CONCAT(first_name, ' ', COALESCE(last_name, '')) AS name
     FROM users
     WHERE company_id = $company_id
         AND status = 'active'
-        AND role IN ('Telesale', 'Supervisor Telesale')
+        $emp_role_filter
+        $emp_access_filter
     ORDER BY first_name
 ";
 $result = $conn->query($emp_sql);
@@ -397,11 +516,14 @@ $response = [
         'by_customer_type' => $by_customer_type,
         'by_customer_type_monthly' => $by_customer_type_monthly,
         'monthly_products' => $monthly_products,
+        'qty_distribution' => $qty_distribution,
         'category_performance' => array_values($cat_perf),
         'employees' => $employees,
         'filters' => [
             'year' => $year,
-            'employee_id' => $employee_id
+            'department' => $department,
+            'user_id' => $user_id,
+            'salesperson' => $salesperson > 0 ? $salesperson : 'all'
         ]
     ]
 ];

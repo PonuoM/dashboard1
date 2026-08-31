@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import * as d3Geo from 'd3-geo';
+import { DateRangeFilter } from '../../components/UI';
+import useDateRange from '../../hooks/useDateRange';
 
 /* ==================== EXECUTIVE INSIGHT — M3-inspired Redesign ==================== */
 function ExecutiveInsightPage({ user }) {
@@ -7,17 +9,18 @@ function ExecutiveInsightPage({ user }) {
     const [loading, setLoading] = useState(true);
     const [month, setMonth] = useState(new Date().getMonth() + 1);
     const [year, setYear] = useState(new Date().getFullYear());
+    const dateRange = useDateRange('executiveInsight');
 
     const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
     useEffect(() => {
         setLoading(true);
-        fetch(`${API_BASE}/reports/executive_summary.php?company_id=${user?.company_id || 1}&month=${month}&year=${year}`)
+        fetch(`${API_BASE}/reports/executive_summary.php?company_id=${user?.company_id || 1}&month=${month}&year=${year}${dateRange.active ? dateRange.params : ''}`)
             .then(r => r.json())
             .then(res => { if (res.success) setData(res.data); })
             .catch(() => {})
             .finally(() => setLoading(false));
-    }, [month, year, user?.company_id]);
+    }, [month, year, user?.company_id, dateRange.key]);
 
     const fmt = (n) => n != null ? Number(n).toLocaleString('th-TH') : '0';
     const fmtM = (n) => {
@@ -62,16 +65,19 @@ function ExecutiveInsightPage({ user }) {
             <style>{appleStyles}</style>
 
             {/* Floating date picker — sticky top-right */}
-            <div className="fixed top-20 right-6 z-30 flex items-center gap-1 bg-white/80 backdrop-blur-xl rounded-full px-4 py-2 shadow-lg border border-gray-100">
-                <span className="material-symbols-outlined text-[16px] text-gray-400 mr-1">calendar_month</span>
-                <select value={month} onChange={e => setMonth(+e.target.value)}
-                    className="text-xs text-gray-600 bg-transparent border-0 outline-none cursor-pointer font-semibold">
-                    {monthNames.slice(1).map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-                </select>
-                <select value={year} onChange={e => setYear(+e.target.value)}
-                    className="text-xs text-gray-600 bg-transparent border-0 outline-none cursor-pointer font-semibold">
-                    {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
-                </select>
+            <div className="fixed top-20 right-6 z-30 flex items-center gap-2">
+                <DateRangeFilter value={dateRange} />
+                <div className={`flex items-center gap-1 bg-white/80 backdrop-blur-xl rounded-full px-4 py-2 shadow-lg border border-gray-100 ${dateRange.active ? 'opacity-50 pointer-events-none' : ''}`}>
+                    <span className="material-symbols-outlined text-[16px] text-gray-400 mr-1">calendar_month</span>
+                    <select value={month} onChange={e => setMonth(+e.target.value)}
+                        className="text-xs text-gray-600 bg-transparent border-0 outline-none cursor-pointer font-semibold">
+                        {monthNames.slice(1).map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+                    </select>
+                    <select value={year} onChange={e => setYear(+e.target.value)}
+                        className="text-xs text-gray-600 bg-transparent border-0 outline-none cursor-pointer font-semibold">
+                        {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+                    </select>
+                </div>
             </div>
 
             {/* ===== HERO ===== */}

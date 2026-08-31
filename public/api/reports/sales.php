@@ -55,6 +55,11 @@ if ($month === 0) {
     $end_date = date('Y-m-d 00:00:00', strtotime($start_date . ' +1 month'));
 }
 
+// Optional explicit date range (วันนี้ / เมื่อวาน / กำหนดวัน) — overrides month/year ถ้ามี
+require_once __DIR__ . '/../helpers/date_filter.php';
+$__r = resolve_date_range();
+if ($__r) { $start_date = $__r['start']; $end_date = $__r['end_excl']; }
+
 // Build cancelled filter
 // Returned is NOT filtered because it counts as shipped; only Cancelled/BadDebt are filtered
 $cancelled_filter = $include_cancelled ? "" : "AND o.order_status NOT IN ('Cancelled', 'BadDebt')";
@@ -121,6 +126,7 @@ try {
             AND (p.category LIKE '%ปุ๋ย%' OR p.category = 'ชีวภัณฑ์')
             AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
             AND (oi.is_promotion_parent = 0 OR oi.is_promotion_parent IS NULL)
+            AND o.order_status != 'Returned'
             {$cancelled_filter}
             {$access_filter}
         GROUP BY product_type
@@ -145,12 +151,12 @@ try {
             u.first_name AS salesperson_name,
             u.role AS role_name,
             u.supervisor_id,
-            COALESCE(SUM(CASE WHEN p.category LIKE '%ปุ๋ย%' THEN oi.quantity ELSE 0 END), 0) AS fertilizer_qty,
-            COALESCE(SUM(CASE WHEN p.category LIKE '%ปุ๋ย%' THEN oi.net_total ELSE 0 END), 0) AS fertilizer_sales,
-            COUNT(DISTINCT CASE WHEN p.category LIKE '%ปุ๋ย%' THEN o.id END) AS fertilizer_orders,
-            COALESCE(SUM(CASE WHEN p.category = 'ชีวภัณฑ์' THEN oi.quantity ELSE 0 END), 0) AS bio_qty,
-            COALESCE(SUM(CASE WHEN p.category = 'ชีวภัณฑ์' THEN oi.net_total ELSE 0 END), 0) AS bio_sales,
-            COUNT(DISTINCT CASE WHEN p.category = 'ชีวภัณฑ์' THEN o.id END) AS bio_orders,
+            COALESCE(SUM(CASE WHEN p.category LIKE '%ปุ๋ย%' AND o.order_status != 'Returned' THEN oi.quantity ELSE 0 END), 0) AS fertilizer_qty,
+            COALESCE(SUM(CASE WHEN p.category LIKE '%ปุ๋ย%' AND o.order_status != 'Returned' THEN oi.net_total ELSE 0 END), 0) AS fertilizer_sales,
+            COUNT(DISTINCT CASE WHEN p.category LIKE '%ปุ๋ย%' AND o.order_status != 'Returned' THEN o.id END) AS fertilizer_orders,
+            COALESCE(SUM(CASE WHEN p.category = 'ชีวภัณฑ์' AND o.order_status != 'Returned' THEN oi.quantity ELSE 0 END), 0) AS bio_qty,
+            COALESCE(SUM(CASE WHEN p.category = 'ชีวภัณฑ์' AND o.order_status != 'Returned' THEN oi.net_total ELSE 0 END), 0) AS bio_sales,
+            COUNT(DISTINCT CASE WHEN p.category = 'ชีวภัณฑ์' AND o.order_status != 'Returned' THEN o.id END) AS bio_orders,
             COALESCE(SUM(oi.net_total), 0) AS total_sales,
             COUNT(DISTINCT o.id) AS total_orders
         FROM orders o
@@ -177,10 +183,52 @@ try {
     $pivot_result = $stmt->get_result();
     
     $by_salesperson = [];
+    $seen_user_ids = [];
     while ($row = $pivot_result->fetch_assoc()) {
         $by_salesperson[] = $row;
+        $seen_user_ids[intval($row['user_id'])] = true;
     }
     $stmt->close();
+
+    // Query 2b: Add active salespersons who have no sales in this period
+    // (so they still appear in the report with zero values).
+    // Inactive users with sales are already included via the pivot above.
+    $active_sql = "
+        SELECT id AS user_id, first_name AS salesperson_name, role AS role_name, supervisor_id
+        FROM users
+        WHERE company_id = ?
+          AND role IN ('Telesale', 'Supervisor Telesale')
+          AND status = 'active'
+    ";
+    if (!empty($allowed_user_ids)) {
+        $ids_str = implode(',', $allowed_user_ids);
+        $active_sql .= " AND id IN ($ids_str)";
+    }
+    $stmt = $conn->prepare($active_sql);
+    if ($stmt) {
+        $stmt->bind_param("i", $company_id);
+        $stmt->execute();
+        $active_result = $stmt->get_result();
+        while ($row = $active_result->fetch_assoc()) {
+            $uid = intval($row['user_id']);
+            if (isset($seen_user_ids[$uid])) continue;
+            $by_salesperson[] = [
+                'user_id' => $uid,
+                'salesperson_name' => $row['salesperson_name'],
+                'role_name' => $row['role_name'],
+                'supervisor_id' => $row['supervisor_id'],
+                'fertilizer_qty' => 0,
+                'fertilizer_sales' => 0,
+                'fertilizer_orders' => 0,
+                'bio_qty' => 0,
+                'bio_sales' => 0,
+                'bio_orders' => 0,
+                'total_sales' => 0,
+                'total_orders' => 0,
+            ];
+        }
+        $stmt->close();
+    }
 
     // Query 3: Get targets for current month/year
     $targets = [];

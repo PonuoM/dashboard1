@@ -39,6 +39,11 @@ if ($month === 0) {
     $end_date = date('Y-m-d 00:00:00', strtotime($start_date . ' +1 month'));
 }
 
+// Optional explicit date range (วันนี้ / เมื่อวาน / กำหนดวัน) — overrides month/year ถ้ามี
+require_once __DIR__ . '/../helpers/date_filter.php';
+$__r = resolve_date_range();
+if ($__r) { $start_date = $__r['start']; $end_date = $__r['end_excl']; }
+
 try {
     $response = [];
 

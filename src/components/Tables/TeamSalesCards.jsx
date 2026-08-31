@@ -1,6 +1,6 @@
 
 
-function TeamSalesCards({ data, meta, cancellationTypes, onViewCancelledOrders, onViewReturnedOrders }) {
+function TeamSalesCards({ data, meta, cancellationTypes, onViewCancelledOrders, onViewReturnedOrders, defaultTeamName = 'ไม่มีทีม' }) {
     const fmt = (val) => new Intl.NumberFormat('th-TH').format(val || 0);
 
     const daysInMonth = meta?.days_in_month || 31;
@@ -274,7 +274,7 @@ function TeamSalesCards({ data, meta, cancellationTypes, onViewCancelledOrders, 
                 const color = teamColors[teamIndex % teamColors.length];
                 const supervisor = team.supervisor;
                 const members = [...team.members].sort((a, b) => parseFloat(b.total_sales) - parseFloat(a.total_sales));
-                const teamName = supervisor ? `ทีม ${supervisor.salesperson_name}` : 'ไม่มีทีม';
+                const teamName = supervisor ? `ทีม ${supervisor.salesperson_name}` : defaultTeamName;
                 const memberCount = members.length + (supervisor ? 1 : 0);
 
                 return (

@@ -18,6 +18,11 @@ $user_id = isset($_GET['user_id']) ? intval($_GET['user_id']) : 0;
 $startDate = sprintf('%04d-%02d-01', $year, $month);
 $endDate = date('Y-m-d', strtotime($startDate . ' +1 month')); // First day of next month for < comparison
 
+// Optional explicit date range (วันนี้ / เมื่อวาน / กำหนดวัน) — overrides month/year ถ้ามี
+require_once __DIR__ . '/../helpers/date_filter.php';
+$__r = resolve_date_range();
+if ($__r) { $startDate = substr($__r['start'], 0, 10); $endDate = substr($__r['end_excl'], 0, 10); }
+
 // Build company filter
 $companyFilter = $company_id > 0 ? "AND u.company_id = ?" : "";
 $companyFilterSales = $company_id > 0 ? "AND o.company_id = ?" : "";
@@ -191,6 +196,13 @@ try {
             'members' => isset($teamMembers[$supId]) ? $teamMembers[$supId] : []
         ];
         $groups[] = $group;
+    }
+
+    // Members whose supervisor is not in the result set (e.g. Telesale viewing only own data) → show as unassigned
+    foreach ($teamMembers as $supId => $members) {
+        if (!isset($supervisors[$supId])) {
+            $unassigned = array_merge($unassigned, $members);
+        }
     }
 
     // Last: Unassigned users (no supervisor or supervisor without team)

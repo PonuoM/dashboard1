@@ -77,21 +77,32 @@ try {
     }
 
     $sql = "
-        SELECT 
+        SELECT
             o.id AS order_id,
             o.order_date,
             o.order_status,
             COALESCE(c.first_name, '') AS customer_name,
             COALESCE(c.phone, '') AS customer_phone,
             COALESCE(SUM(oi.net_total), 0) AS net_total,
-            COALESCE(oc.notes, '') AS cancel_notes
+            COALESCE(oc.notes, '') AS cancel_notes,
+            COALESCE(ob.return_notes, '') AS warehouse_notes,
+            COALESCE(ru.first_name, '') AS warehouse_by
         FROM orders o
         INNER JOIN order_items oi ON o.id = oi.parent_order_id
         INNER JOIN products p ON oi.product_id = p.id
         INNER JOIN users u ON oi.creator_id = u.id
         LEFT JOIN customers c ON o.customer_id = c.customer_id
         LEFT JOIN order_cancellations oc ON oc.order_id = o.id
-        WHERE 
+        LEFT JOIN (
+            SELECT
+                order_id,
+                GROUP_CONCAT(DISTINCT NULLIF(TRIM(return_note), '') SEPARATOR ' | ') AS return_notes,
+                MAX(returned_by) AS returned_by
+            FROM order_boxes
+            GROUP BY order_id
+        ) ob ON ob.order_id = o.id
+        LEFT JOIN users ru ON ru.id = ob.returned_by
+        WHERE
             o.company_id = ?
             AND u.id = ?
             AND o.order_date >= ?
@@ -101,7 +112,7 @@ try {
             AND (oi.is_promotion_parent = 0 OR oi.is_promotion_parent IS NULL)
             {$status_filter}
             {$type_filter}
-        GROUP BY o.id, o.order_date, o.order_status, c.first_name, c.phone, oc.notes
+        GROUP BY o.id, o.order_date, o.order_status, c.first_name, c.phone, oc.notes, ob.return_notes, ru.first_name
         ORDER BY o.order_date DESC
     ";
 

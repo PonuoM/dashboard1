@@ -22,9 +22,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $user = $result->fetch_assoc();
             // Verify password (plaintext as requested)
             if ($password === $user['password']) {
-                // Only allow specific roles to access Dashboard
-                $allowed_roles = ['Admin Control', 'Supervisor Telesale'];
-                if (!in_array($user['role'], $allowed_roles)) {
+                // Only allow specific roles to access Dashboard (case-insensitive)
+                $allowed_roles = ['admin control', 'supervisor telesale', 'telesale', 'admin page', 'backoffice'];
+                if (!in_array(strtolower($user['role']), $allowed_roles)) {
                     $response['message'] = 'ไม่มีสิทธิ์เข้าใช้งาน Dashboard';
                 } else {
                     $response['success'] = true;

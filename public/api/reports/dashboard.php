@@ -42,6 +42,53 @@ if (empty($months) || in_array(0, $months)) {
     $date_condition = "YEAR(o.order_date) IN ($year_in) AND MONTH(o.order_date) IN ($month_in)";
 }
 
+// Optional explicit date range (วันนี้ / เมื่อวาน / กำหนดวัน) — overrides ปี/เดือน ถ้ามี
+require_once __DIR__ . '/../helpers/date_filter.php';
+$__r = resolve_date_range();
+if ($__r) {
+    $date_condition = "o.order_date >= '{$__r['start']}' AND o.order_date < '{$__r['end_excl']}'";
+    $is_all_year = false;
+    // ให้กราฟยอดขายรายเดือนอิงปีของช่วงที่เลือก
+    $years = [intval(substr($__r['start'], 0, 4))];
+    $year_in = implode(',', $years);
+}
+
+// Viewer-based access control — resolve role server-side from user_id
+// Telesale / Admin Page: forced to own data
+// Supervisor Telesale: own data by default; may pick a subordinate via salesperson_id
+// Admin Control / others: unrestricted (salesperson_id honored as-is)
+$viewer_id = isset($_GET['user_id']) ? intval($_GET['user_id']) : 0;
+$team_members = null;
+if ($viewer_id > 0) {
+    $role_stmt = $conn->prepare("SELECT role, first_name FROM users WHERE id = ?");
+    $role_stmt->bind_param('i', $viewer_id);
+    $role_stmt->execute();
+    $viewer = $role_stmt->get_result()->fetch_assoc();
+    $role_stmt->close();
+    $viewer_role = strtolower($viewer['role'] ?? '');
+
+    if ($viewer_role === 'telesale' || $viewer_role === 'admin page') {
+        $salesperson_id = $viewer_id;
+    } elseif ($viewer_role === 'supervisor telesale') {
+        $team_members = [['id' => $viewer_id, 'name' => $viewer['first_name'] ?? '', 'is_self' => true]];
+        $allowed_ids = [$viewer_id];
+        $sub_stmt = $conn->prepare("SELECT id, first_name FROM users WHERE supervisor_id = ? AND (status IS NULL OR status = 'active')");
+        $sub_stmt->bind_param('i', $viewer_id);
+        $sub_stmt->execute();
+        $sub_result = $sub_stmt->get_result();
+        while ($sub_row = $sub_result->fetch_assoc()) {
+            $allowed_ids[] = intval($sub_row['id']);
+            $team_members[] = ['id' => intval($sub_row['id']), 'name' => $sub_row['first_name'], 'is_self' => false];
+        }
+        $sub_stmt->close();
+        // Only allow viewing self or a direct subordinate; default to self
+        if (!in_array($salesperson_id, $allowed_ids)) {
+            $salesperson_id = $viewer_id;
+        }
+    }
+    // Admin Control / other roles: no restriction
+}
+
 // Salesperson filter — filter by oi.creator_id (item-level seller)
 $salesperson_condition = "";
 if ($salesperson_id > 0) {
@@ -253,7 +300,17 @@ try {
             
             COUNT(DISTINCT CASE WHEN o.order_status = 'BadDebt' THEN o.id END) AS baddebt_orders,
             COALESCE(SUM(CASE WHEN o.order_status = 'BadDebt' THEN oi.net_total ELSE 0 END), 0) AS baddebt_sales,
-            
+
+            COUNT(DISTINCT CASE WHEN o.order_status = 'Delivered' AND COALESCE(o.amount_paid, 0) < COALESCE(o.total_amount, 0) AND COALESCE(o.payment_status, '') <> 'Approved' THEN o.id END) AS unpaid_orders,
+            COALESCE(SUM(CASE
+                WHEN o.order_status = 'Delivered'
+                 AND COALESCE(o.amount_paid, 0) < COALESCE(o.total_amount, 0)
+                 AND COALESCE(o.total_amount, 0) > 0
+                 AND COALESCE(o.payment_status, '') <> 'Approved'
+                THEN oi.net_total * (COALESCE(o.total_amount, 0) - COALESCE(o.amount_paid, 0)) / COALESCE(o.total_amount, 0)
+                ELSE 0
+            END), 0) AS unpaid_sales,
+
             COUNT(DISTINCT CASE WHEN o.order_status NOT IN ('Delivered', 'Returned', 'Cancelled', 'BadDebt') THEN o.id END) AS other_orders,
             COALESCE(SUM(CASE WHEN o.order_status NOT IN ('Delivered', 'Returned', 'Cancelled', 'BadDebt') THEN oi.net_total ELSE 0 END), 0) AS other_sales
         FROM orders o
@@ -328,7 +385,10 @@ try {
             
             'baddebt_orders' => intval($row['baddebt_orders']),
             'baddebt_sales' => floatval($row['baddebt_sales']),
-            
+
+            'unpaid_orders' => intval($row['unpaid_orders']),
+            'unpaid_sales' => floatval($row['unpaid_sales']),
+
             'other_orders' => intval($row['other_orders']),
             'other_sales' => floatval($row['other_sales'])
         ];
@@ -362,6 +422,50 @@ try {
     $by_channel = [];
     while ($row = $channel_result->fetch_assoc()) {
         $by_channel[] = $row;
+    }
+    $stmt->close();
+
+    // =============================================
+    // 3.4 Channel Product Details (for modal)
+    // =============================================
+    $channel_detail_sql = "
+        SELECT
+            COALESCE(NULLIF(o.sales_channel, ''), 'ไม่ระบุ') AS channel,
+            p.id AS product_id,
+            p.name AS product_name,
+            p.category AS original_category,
+            SUM(oi.quantity) AS total_quantity,
+            COALESCE(SUM(oi.net_total), 0) AS total_sales
+        FROM orders o
+        INNER JOIN order_items oi ON o.id = oi.parent_order_id
+        LEFT JOIN products p ON oi.product_id = p.id
+        WHERE
+            o.company_id = ?
+            AND $date_condition
+            AND o.order_status != 'Cancelled'
+            AND (oi.is_freebie = 0 OR oi.is_freebie IS NULL)
+            AND (oi.is_promotion_parent = 0 OR oi.is_promotion_parent IS NULL)
+            $salesperson_condition
+        GROUP BY channel, p.id, p.name, p.category
+        ORDER BY channel, total_sales DESC
+    ";
+    $stmt = $conn->prepare($channel_detail_sql);
+    $stmt->bind_param("i", $company_id);
+    $stmt->execute();
+    $channel_detail_result = $stmt->get_result();
+    $channel_details = [];
+    while ($row = $channel_detail_result->fetch_assoc()) {
+        $ch = $row['channel'];
+        if (!isset($channel_details[$ch])) {
+            $channel_details[$ch] = [];
+        }
+        $channel_details[$ch][] = [
+            'product_id' => $row['product_id'],
+            'product_name' => shorten_product_name($row['product_name']),
+            'original_category' => $row['original_category'],
+            'quantity' => intval($row['total_quantity']),
+            'sales' => floatval($row['total_sales'])
+        ];
     }
     $stmt->close();
 
@@ -455,7 +559,7 @@ try {
     // Previous period summary (for growth — only when single month selected)
     $prev_summary = ['total_sales' => 0, 'total_orders' => 0, 'total_customers' => 0];
     
-    if (count($months) === 1) {
+    if (count($months) === 1 && !$__r) {
         $single_month = reset($months);
         $single_year = count($years) === 1 ? reset($years) : intval(date('Y'));
         $prev_month = $single_month - 1;
@@ -544,14 +648,17 @@ try {
             'by_department' => $by_department,
             'department_details' => $department_details,
             'by_channel' => $by_channel,
+            'channel_details' => $channel_details,
             'by_category' => $by_category,
             'category_details' => $category_details,
-            'salesperson_details' => $salesperson_details
+            'salesperson_details' => $salesperson_details,
+            'team_members' => $team_members
         ],
         'filters' => [
             'company_id' => $company_id,
             'month' => $month_param,
-            'year' => $year_param
+            'year' => $year_param,
+            'salesperson_id' => $salesperson_id
         ]
     ]);
 

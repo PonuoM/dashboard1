@@ -150,7 +150,14 @@ function CancelledOrdersModal({ isOpen, onClose, userId, userName, cancelTypeId,
                                         <th className="px-4 py-3 text-left">ลูกค้า</th>
                                         <th className="px-4 py-3 text-center">สถานะ</th>
                                         <th className="px-4 py-3 text-right">ยอดเงิน</th>
-                                        <th className="px-4 py-3 text-left">หมายเหตุ</th>
+                                        {isReturned ? (
+                                            <>
+                                                <th className="px-4 py-3 text-left">หมายเหตุจากพนักงานขาย</th>
+                                                <th className="px-4 py-3 text-left">หมายเหตุจากคลัง</th>
+                                            </>
+                                        ) : (
+                                            <th className="px-4 py-3 text-left">หมายเหตุ</th>
+                                        )}
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-50">
@@ -188,15 +195,29 @@ function CancelledOrdersModal({ isOpen, onClose, userId, userName, cancelTypeId,
                                                     <td className={`px-4 py-3 text-right font-bold ${amountColor}`}>
                                                         ฿{formatCurrency(order.net_total)}
                                                     </td>
-                                                    <td className="px-4 py-3 text-xs text-gray-500 max-w-[200px] truncate">
-                                                        {order.cancel_notes || '-'}
-                                                    </td>
+                                                    {isReturned ? (
+                                                        <>
+                                                            <td className="px-4 py-3 text-xs text-gray-500 max-w-[180px] truncate">
+                                                                {order.cancel_notes || '-'}
+                                                            </td>
+                                                            <td className="px-4 py-3 text-xs text-gray-500 max-w-[200px] truncate" title={order.warehouse_by ? `บันทึกโดย: ${order.warehouse_by}` : ''}>
+                                                                {order.warehouse_notes || (order.warehouse_by ? <span className="italic text-gray-400">ไม่มีหมายเหตุ</span> : '-')}
+                                                                {order.warehouse_by && (
+                                                                    <span className="block text-[10px] text-gray-400">โดย {order.warehouse_by}</span>
+                                                                )}
+                                                            </td>
+                                                        </>
+                                                    ) : (
+                                                        <td className="px-4 py-3 text-xs text-gray-500 max-w-[200px] truncate">
+                                                            {order.cancel_notes || '-'}
+                                                        </td>
+                                                    )}
                                                 </tr>
 
                                                 {/* Expanded: Product details */}
                                                 {isOrderExpanded && (
                                                     <tr key={`${order.order_id}-items`}>
-                                                        <td colSpan="8" className="px-0 py-0">
+                                                        <td colSpan={isReturned ? "9" : "8"} className="px-0 py-0">
                                                             <div className="mx-4 mb-3 bg-gradient-to-r from-gray-50 to-blue-50/30 rounded-xl border border-gray-100 overflow-hidden" style={{ animation: 'fadeSlideIn 0.15s ease-out' }}>
                                                                 {isItemsLoading ? (
                                                                     <div className="flex items-center justify-center py-6 gap-2">

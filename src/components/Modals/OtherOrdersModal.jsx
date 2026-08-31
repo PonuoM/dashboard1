@@ -1,5 +1,15 @@
 import { useState, useEffect, Fragment } from 'react';
 
+// สภาพกล่องที่ตีกลับ (order_boxes.return_status) — ตรงกับหน้า ReturnedDetails
+const RETURN_STATUS_MAP = {
+    good: { label: 'ดี', cls: 'bg-green-100 text-green-700' },
+    damaged: { label: 'ชำรุด', cls: 'bg-red-100 text-red-700' },
+    returning: { label: 'กำลังส่งคืน', cls: 'bg-amber-100 text-amber-700' },
+    lost: { label: 'สูญหาย', cls: 'bg-gray-200 text-gray-700' },
+    returned: { label: 'คืนแล้ว', cls: 'bg-blue-100 text-blue-700' },
+};
+const returnStatusInfo = (s) => RETURN_STATUS_MAP[s] || { label: s || '-', cls: 'bg-gray-100 text-gray-500' };
+
 function OtherOrdersModal({ isOpen, onClose, productId, productName, salespersonId, salespersonName, department, companyId, month, year, statusType = 'other', cancelTypeId }) {
     const [loading, setLoading] = useState(true);
     const [data, setData] = useState(null);
@@ -21,6 +31,7 @@ function OtherOrdersModal({ isOpen, onClose, productId, productName, salesperson
         returned: { gradient: 'from-red-50 to-orange-50', icon: 'undo', title: 'รายละเอียดออเดอร์ (ตีกลับ)', color: 'text-red-600', borderColor: 'border-t-red-500', badgeBg: 'bg-red-100 text-red-700' },
         cancelled: { gradient: 'from-gray-50 to-gray-100', icon: 'cancel', title: 'รายละเอียดออเดอร์ (ยกเลิก)', color: 'text-gray-600', borderColor: 'border-t-gray-500', badgeBg: 'bg-gray-100 text-gray-700' },
         baddebt: { gradient: 'from-purple-50 to-purple-100', icon: 'money_off', title: 'รายละเอียดออเดอร์ (หนี้สูญ)', color: 'text-purple-600', borderColor: 'border-t-purple-500', badgeBg: 'bg-purple-100 text-purple-700' },
+        unpaid: { gradient: 'from-orange-50 to-red-50', icon: 'payments', title: 'รายละเอียดออเดอร์ (ค้างชำระ)', color: 'text-orange-600', borderColor: 'border-t-orange-500', badgeBg: 'bg-orange-100 text-orange-700' },
         Pending: { gradient: 'from-yellow-50 to-amber-50', icon: 'hourglass_empty', title: 'รายละเอียดออเดอร์ (รอดำเนินการ)', color: 'text-yellow-600', borderColor: 'border-t-yellow-500', badgeBg: 'bg-yellow-100 text-yellow-700' },
         Preparing: { gradient: 'from-blue-50 to-indigo-50', icon: 'inventory_2', title: 'รายละเอียดออเดอร์ (กำลังจัดเตรียม)', color: 'text-blue-600', borderColor: 'border-t-blue-500', badgeBg: 'bg-blue-100 text-blue-700' },
         Shipping: { gradient: 'from-indigo-50 to-purple-50', icon: 'local_shipping', title: 'รายละเอียดออเดอร์ (กำลังจัดส่ง)', color: 'text-indigo-600', borderColor: 'border-t-indigo-500', badgeBg: 'bg-indigo-100 text-indigo-700' },
@@ -40,6 +51,7 @@ function OtherOrdersModal({ isOpen, onClose, productId, productName, salesperson
             else suffix = 'ออเดอร์ยกเลิก';
         }
         else if (statusType === 'baddebt') suffix = 'ออเดอร์หนี้สูญ';
+        else if (statusType === 'unpaid') suffix = 'ออเดอร์ค้างชำระ (ส่งสำเร็จ ยังไม่ได้รับเงินครบ)';
         else if (statusType === 'Pending') suffix = 'ออเดอร์รอดำเนินการ';
         else if (statusType === 'Preparing') suffix = 'ออเดอร์กำลังจัดเตรียม';
         else if (statusType === 'Shipping') suffix = 'ออเดอร์กำลังจัดส่ง';
@@ -54,6 +66,8 @@ function OtherOrdersModal({ isOpen, onClose, productId, productName, salesperson
     };
 
     const config = statusConfig[statusType] || statusConfig.other;
+    const hasNotesColumn = statusType === 'returned' || statusType === 'cancelled';
+    const totalCols = hasNotesColumn ? 12 : 11;
 
     useEffect(() => {
         if (!isOpen) return;
@@ -84,7 +98,7 @@ function OtherOrdersModal({ isOpen, onClose, productId, productName, salesperson
             })
             .catch(() => setError('Connection error'))
             .finally(() => setLoading(false));
-    }, [isOpen, productId, department, companyId, month, year, statusType, cancelTypeId]);
+    }, [isOpen, productId, salespersonId, department, companyId, month, year, statusType, cancelTypeId]);
 
     const toggleOrderItems = (orderId) => {
         if (expandedOrder === orderId) {
@@ -201,7 +215,7 @@ function OtherOrdersModal({ isOpen, onClose, productId, productName, salesperson
                                         <span className="text-xs text-gray-400 ml-2">(คลิกเพื่อดูสินค้า)</span>
                                     </span>
                                     <span className={`text-sm font-bold ${config.color}`}>
-                                        รวม ฿{formatCurrency(data.total_amount)}
+                                        {statusType === 'unpaid' ? 'รวมค้างชำระ' : 'รวม'} ฿{formatCurrency(data.total_amount)}
                                     </span>
                                 </div>
                             </div>
@@ -217,11 +231,14 @@ function OtherOrdersModal({ isOpen, onClose, productId, productName, salesperson
                                         <th className="px-3 py-3 text-left">วันที่</th>
                                         <th className="px-3 py-3 text-left">ลูกค้า</th>
                                         <th className="px-3 py-3 text-left">ผู้สร้าง</th>
+                                        {hasNotesColumn && (
+                                            <th className="px-3 py-3 text-left">{statusType === 'returned' ? 'เหตุผลตีกลับ' : 'หมายเหตุยกเลิก'}</th>
+                                        )}
                                         <th className="px-3 py-3 text-center">สถานะ</th>
                                         <th className="px-3 py-3 text-center">ชำระเงิน</th>
                                         <th className="px-3 py-3 text-center">สถานะจ่าย</th>
                                         <th className="px-3 py-3 text-center">จำนวน</th>
-                                        <th className="px-3 py-3 text-right">ยอดเงิน</th>
+                                        <th className="px-3 py-3 text-right">{statusType === 'unpaid' ? 'ค้างชำระ' : 'ยอดเงิน'}</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-50">
@@ -255,6 +272,52 @@ function OtherOrdersModal({ isOpen, onClose, productId, productName, salesperson
                                                         <div className="text-xs text-gray-600">{order.creator_name || '-'}</div>
                                                         <div className="text-[10px] text-gray-400">{order.creator_role || ''}</div>
                                                     </td>
+                                                    {hasNotesColumn && (() => {
+                                                        const isCancelled = statusType === 'cancelled';
+                                                        // ตีกลับ: เหตุผลอยู่ที่ระดับกล่อง (order_boxes) — orders.notes ใช้เป็น fallback
+                                                        const note = isCancelled
+                                                            ? (order.cancel_notes || '')
+                                                            : (order.return_note || order.order_notes || '');
+                                                        const boxStatuses = (!isCancelled && order.return_status)
+                                                            ? order.return_status.split(',').filter(Boolean)
+                                                            : [];
+                                                        const cellCls = isCancelled ? 'text-gray-600' : 'text-red-600';
+                                                        const tooltip = isCancelled ? (note || '') : [
+                                                            boxStatuses.map(s => `สภาพ: ${returnStatusInfo(s).label}`).join(', '),
+                                                            note,
+                                                            order.return_date ? `บันทึกเมื่อ ${formatDate(order.return_date)}` : '',
+                                                        ].filter(Boolean).join('\n');
+                                                        return (
+                                                            <td className="px-3 py-3 max-w-[220px]" title={tooltip} onClick={(e) => e.stopPropagation()}>
+                                                                {/* เหตุผลจริง (คลังพิมพ์) — ถ้าไม่มีก็บอกตรงๆ ว่าไม่ได้ระบุ ไม่เอาสภาพมาแทน */}
+                                                                {note ? (
+                                                                    <div className={`text-xs ${cellCls} line-clamp-2 break-words whitespace-pre-wrap leading-snug`}>
+                                                                        {note}
+                                                                    </div>
+                                                                ) : (
+                                                                    <span className="text-[10px] italic text-gray-300">
+                                                                        {isCancelled ? '—' : 'ไม่ได้ระบุเหตุผล'}
+                                                                    </span>
+                                                                )}
+                                                                {boxStatuses.length > 0 && (
+                                                                    <div className="flex flex-wrap items-center gap-1 mt-1">
+                                                                        <span className="text-[9px] text-gray-400">สภาพ:</span>
+                                                                        {boxStatuses.map((s) => {
+                                                                            const info = returnStatusInfo(s);
+                                                                            return (
+                                                                                <span key={s} className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${info.cls}`}>
+                                                                                    {info.label}
+                                                                                </span>
+                                                                            );
+                                                                        })}
+                                                                    </div>
+                                                                )}
+                                                                {isCancelled && order.cancel_type_name && (
+                                                                    <div className="text-[9px] text-gray-400 mt-0.5">{order.cancel_type_name}</div>
+                                                                )}
+                                                            </td>
+                                                        );
+                                                    })()}
                                                     <td className="px-3 py-3 text-center">
                                                         <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${badge.className}`}>
                                                             {badge.label}
@@ -291,15 +354,18 @@ function OtherOrdersModal({ isOpen, onClose, productId, productName, salesperson
                                                         })()}
                                                     </td>
                                                     <td className="px-3 py-3 text-center font-bold">{order.item_qty}</td>
-                                                    <td className={`px-3 py-3 text-right font-bold ${config.color}`}>
-                                                        ฿{formatCurrency(order.item_total)}
+                                                    <td className={`px-3 py-3 text-right font-bold ${config.color}`}
+                                                        title={statusType === 'unpaid'
+                                                            ? `ยอดสินค้า (ของคุณ): ฿${formatCurrency(order.item_total)}\nยอดออเดอร์เต็ม: ฿${formatCurrency(order.total_amount)}\nรับเงินแล้ว: ฿${formatCurrency(order.amount_paid)}\nค้างจริง: ฿${formatCurrency((order.total_amount || 0) - (order.amount_paid || 0))}\nสัดส่วนของคุณ: ฿${formatCurrency(order.unpaid_share)}`
+                                                            : ''}>
+                                                        ฿{formatCurrency(statusType === 'unpaid' ? order.unpaid_share : order.item_total)}
                                                     </td>
                                                 </tr>
 
                                                 {/* Expanded: Product details */}
                                                 {isOrderExpanded && (
                                                     <tr key={`${order.order_id}-items`}>
-                                                <td colSpan="11" className="px-0 py-0">
+                                                <td colSpan={totalCols} className="px-0 py-0">
                                                             <div className="mx-4 mb-3 bg-gradient-to-r from-gray-50 to-blue-50/30 rounded-xl border border-gray-100 overflow-hidden" style={{ animation: 'fadeSlideIn 0.15s ease-out' }}>
                                                                 {isItemsLoading ? (
                                                                     <div className="flex items-center justify-center py-6 gap-2">

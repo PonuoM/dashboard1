@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { CustomSelect } from '../../components/UI';
+import { CustomSelect, DateRangeFilter } from '../../components/UI';
+import useDateRange from '../../hooks/useDateRange';
 
 function IndividualSalesPage({ user }) {
     const [loading, setLoading] = useState(true);
@@ -19,6 +20,7 @@ function IndividualSalesPage({ user }) {
         const s = sessionStorage.getItem('individual_year');
         return s ? parseInt(s) : currentDate.getFullYear();
     });
+    const dateRange = useDateRange('individualSales');
 
     useEffect(() => {
         sessionStorage.setItem('individual_month', month.toString());
@@ -36,19 +38,19 @@ function IndividualSalesPage({ user }) {
     for (let y = currentDate.getFullYear(); y >= 2024; y--) years.push(y);
 
     const fetchData = async () => {
-        const cacheKey = `${view}-${month}-${year}-${selectedUserId}`;
+        const cacheKey = `${view}-${month}-${year}-${selectedUserId}-${dateRange.key}`;
         const cached = dataCache.current[cacheKey];
         if (cached) {
             setData(cached); setLoading(false); setError(null);
             try {
-                const r = await fetch(`./api/reports/individual_sales.php?company_id=${user?.company_id || 1}&month=${month}&year=${year}&view=${view}&selected_user_id=${selectedUserId}`);
+                const r = await fetch(`./api/reports/individual_sales.php?company_id=${user?.company_id || 1}&month=${month}&year=${year}&view=${view}&selected_user_id=${selectedUserId}${dateRange.params}`);
                 if (r.ok) { const j = await r.json(); if (j.success) { dataCache.current[cacheKey] = j.data; setData(j.data); if (j.data.users) setUserList(j.data.users); } }
             } catch (_) {}
             return;
         }
         setLoading(true); setError(null);
         try {
-            const r = await fetch(`./api/reports/individual_sales.php?company_id=${user?.company_id || 1}&month=${month}&year=${year}&view=${view}&selected_user_id=${selectedUserId}`);
+            const r = await fetch(`./api/reports/individual_sales.php?company_id=${user?.company_id || 1}&month=${month}&year=${year}&view=${view}&selected_user_id=${selectedUserId}${dateRange.params}`);
             if (!r.ok) throw new Error('HTTP ' + r.status);
             const j = await r.json();
             if (j.success) { dataCache.current[cacheKey] = j.data; setData(j.data); if (j.data.users) setUserList(j.data.users); }
@@ -57,7 +59,7 @@ function IndividualSalesPage({ user }) {
         finally { setLoading(false); }
     };
 
-    useEffect(() => { fetchData(); }, [month, year, view, selectedUserId]);
+    useEffect(() => { fetchData(); }, [month, year, view, selectedUserId, dateRange.key]);
 
     const fmt = (v) => new Intl.NumberFormat('th-TH').format(v || 0);
     const fmtSales = (v) => new Intl.NumberFormat('th-TH', { minimumFractionDigits: 0 }).format(v || 0);
@@ -152,8 +154,11 @@ function IndividualSalesPage({ user }) {
                         </div>
                     </div>
 
+                    {/* Date Range Filter */}
+                    <DateRangeFilter value={dateRange} />
+
                     {/* Month/Year Filter */}
-                    <div className="flex items-end gap-2">
+                    <div className={`flex items-end gap-2 ${dateRange.active ? 'opacity-50 pointer-events-none' : ''}`}>
                         {view === 'daily' && (
                             <div>
                                 <label className="text-xs text-gray-400 uppercase tracking-wider mb-1 block">เดือน</label>
