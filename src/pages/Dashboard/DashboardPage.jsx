@@ -4,8 +4,9 @@ import useDateRange from '../../hooks/useDateRange';
 import OtherOrdersModal from '../../components/Modals/OtherOrdersModal';
 
 // ยอดตีกลับแยกที่ระดับกล่อง ออเดอร์ที่คืนบางกล่องจึงมีของอยู่หลายช่องพร้อมกัน
-const PARTIAL_RETURN_HINT = 'ยอดแยกตามกล่อง: ออเดอร์ที่ตีกลับบางกล่องจะมียอดอยู่ทั้งช่อง ตีกลับ และ สำเร็จ/อื่นๆ ตามกล่องจริง คอลัมน์ "ยอด" บวกกันได้ แต่ "จำนวน" นับออเดอร์ที่มีของในช่องนั้นอย่างน้อย 1 กล่อง จึงบวกกันเกินจำนวนออเดอร์จริง';
+const PARTIAL_RETURN_HINT = 'ยอดแยกตามกล่อง: ออเดอร์ที่ตีกลับหรือยกเลิกบางกล่องจะมียอดอยู่ทั้งช่อง ตีกลับ/ยกเลิก และ สำเร็จ/อื่นๆ ตามกล่องจริง คอลัมน์ "ยอด" บวกกันได้ แต่ "จำนวน" นับออเดอร์ที่มีของในช่องนั้นอย่างน้อย 1 กล่อง จึงบวกกันเกินจำนวนออเดอร์จริง';
 const WAIVED_AMOUNT_HINT = 'ยอดสำเร็จ/อื่นๆ/รวม หักยอดยกเลิกกล่อง (waived_amount) แล้ว ค้างชำระ = ยอดออเดอร์ − amount_paid (สลิป/COD) − ยอด waive';
+const BOX_CANCEL_HINT = 'นับทั้งออเดอร์ที่ order_status = Cancelled และกล่องที่ ERP ตั้ง status = CANCELLED ยอดในช่องนี้เป็นยอดเต็มของกล่องที่ยกเลิก ไม่หัก waive ประเภท 1/2/3 ยังเป็นแค่ออเดอร์ที่ยกเลิกทั้งใบ';
 
 function DashboardPage({ user }) {
     const [loading, setLoading] = useState(true);
@@ -834,6 +835,7 @@ function DashboardPage({ user }) {
                                                     colSpan={expandedColumns.cancelled ? "8" : "2"} 
                                                     rowSpan={expandedColumns.cancelled ? "1" : ((expandedColumns.returned || expandedColumns.cancelled) ? "2" : "1")} 
                                                     className={`py-1 font-bold text-center text-gray-500 border-b cursor-pointer transition-colors align-middle ${expandedColumns.cancelled ? 'bg-gray-200 border-l-2 border-l-gray-400 border-r-2 border-r-gray-400' : 'bg-gray-50 border-l border-gray-100 border-r-2 border-gray-200 hover:bg-gray-200'}`} 
+                                                    title={BOX_CANCEL_HINT}
                                                     onClick={() => !expandedColumns.cancelled && toggleColumnGroup('cancelled')}
                                                 >
                                                     {expandedColumns.cancelled ? (
@@ -982,8 +984,8 @@ function DashboardPage({ user }) {
                                                     )}
                                                     
                                                     {/* Total Cancelled */}
-                                                    <td className={`text-center font-bold text-gray-500 px-2 bg-gray-100/80 ${expandedColumns.cancelled ? 'border-l-2 border-l-gray-400' : 'border-l border-gray-100'} ${person.cancelled_orders > 0 ? 'cursor-pointer hover:bg-gray-200 hover:underline' : ''}`} onClick={(e) => { if(person.cancelled_orders > 0) { e.stopPropagation(); openSalespersonStatusModal(person, deptName, 'cancelled'); } }}>{person.cancelled_orders > 0 ? formatCurrency(person.cancelled_orders) : '-'}</td>
-                                                    <td className={`text-right text-gray-500 font-kanit px-2 bg-gray-100/80 ${expandedColumns.cancelled ? 'border-r border-gray-300' : 'border-r-2 border-gray-200'} ${person.cancelled_sales > 0 ? 'cursor-pointer hover:bg-gray-200 hover:underline' : ''}`} onClick={(e) => { if(person.cancelled_sales > 0) { e.stopPropagation(); openSalespersonStatusModal(person, deptName, 'cancelled'); } }}>{person.cancelled_sales > 0 ? `฿${formatCurrency(person.cancelled_sales)}` : '-'}</td>
+                                                    <td className={`text-center font-bold text-gray-500 px-2 bg-gray-100/80 ${expandedColumns.cancelled ? 'border-l-2 border-l-gray-400' : 'border-l border-gray-100'} ${person.cancelled_orders > 0 ? 'cursor-pointer hover:bg-gray-200 hover:underline' : ''}`} title={BOX_CANCEL_HINT} onClick={(e) => { if(person.cancelled_orders > 0) { e.stopPropagation(); openSalespersonStatusModal(person, deptName, 'cancelled'); } }}>{person.cancelled_orders > 0 ? formatCurrency(person.cancelled_orders) : '-'}</td>
+                                                    <td className={`text-right text-gray-500 font-kanit px-2 bg-gray-100/80 ${expandedColumns.cancelled ? 'border-r border-gray-300' : 'border-r-2 border-gray-200'} ${person.cancelled_sales > 0 ? 'cursor-pointer hover:bg-gray-200 hover:underline' : ''}`} title={BOX_CANCEL_HINT} onClick={(e) => { if(person.cancelled_sales > 0) { e.stopPropagation(); openSalespersonStatusModal(person, deptName, 'cancelled'); } }}>{person.cancelled_sales > 0 ? `฿${formatCurrency(person.cancelled_sales)}` : '-'}</td>
                                                     
                                                     {/* Expanded Cancelled Subcategories */}
                                                     {expandedColumns.cancelled && (

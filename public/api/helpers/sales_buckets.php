@@ -14,28 +14,31 @@
  * ────────────────────────────────────────────────────────────
  * order_boxes.status ไม่ได้ถูกอัปเดตตาม lifecycle ปกติ — กล่องของออเดอร์ที่
  * ส่งสำเร็จแล้วส่วนใหญ่ยังคงเป็น 'PENDING' ค่าที่เชื่อถือได้มีเพียง
- * 'RETURNED' ซึ่งถูกเซ็ตตอนที่มีการตีกลับจริง จึงต้องคง order_status เป็น
- * ตัวตัดสินหลัก แล้ว "แกะ" เฉพาะ item ที่อยู่ในกล่องตีกลับออกมาเท่านั้น
- * ห้ามใช้ order_boxes.status เป็นตัวตัดสิน สำเร็จ/อื่นๆ
+ * 'RETURNED' และ 'CANCELLED' ซึ่ง ERP เซ็ตตอนเกิดเหตุจริง จึงต้องคง
+ * order_status เป็นตัวตัดสินหลัก แล้ว "แกะ" เฉพาะกล่อง RETURNED / CANCELLED
+ * ห้ามใช้สถานะกล่องอื่น (DELIVERED, PENDING, SHIPPING) เป็นตัวตัดสิน สำเร็จ
  *
  * ลำดับการตัดสิน (ต่อ 1 item)
  * ────────────────────────────────────────────────────────────
  *   1. order_status = 'Cancelled'                  -> cancelled
  *   2. order_status = 'BadDebt'                    -> baddebt
  *   3. กล่องของ item นั้น status = 'RETURNED'      -> returned
- *   4. order_status IN ('Delivered', 'Returned')   -> delivered
- *   5. ที่เหลือ                                     -> other
+ *   4. กล่องของ item นั้น status = 'CANCELLED'     -> cancelled
+ *   5. order_status IN ('Delivered', 'Returned')   -> delivered
+ *   6. ที่เหลือ                                     -> other
  *
  * total = delivered + other (ไม่รวม returned / cancelled / baddebt)
  *
- * สาขา 'Returned' ในข้อ 4 คือตัวจัดการ partial return: กล่องที่ไม่ได้ตีกลับ
+ * สาขา 'Returned' ในข้อ 5 คือตัวจัดการ partial return: กล่องที่ไม่ได้ตีกลับ
  * ในออเดอร์ที่ order_status = 'Returned' ถือว่าลูกค้ารับของไว้แล้ว
+ * ข้อ 4 คือ partial cancel: กล่อง CANCELLED ไปช่องยกเลิก กล่องอื่นอยู่สำเร็จ/อื่นๆ
  *
  * ข้อควรรู้เรื่องการนับจำนวน
  * ────────────────────────────────────────────────────────────
  * COUNT(DISTINCT CASE WHEN <bucket> THEN o.id END) = จำนวนออเดอร์ที่มีของ
- * อยู่ในกลุ่มนั้นอย่างน้อย 1 กล่อง ออเดอร์ที่ตีกลับบางส่วนจะถูกนับทั้งใน
- * returned และใน delivered/other ยอดเงินบวกกันได้ แต่จำนวนบวกกันเกินจริง
+ * อยู่ในกลุ่มนั้นอย่างน้อย 1 กล่อง ออเดอร์ที่ตีกลับหรือยกเลิกบางกล่องจะถูกนับ
+ * ทั้งใน cancelled/returned และใน delivered/other ยอดเงินบวกกันได้ แต่จำนวน
+ * บวกกันเกินจริง
  */
 
 /**
@@ -114,6 +117,7 @@ function sales_unpaid_condition($o = 'o', $oi = 'oi', $ob = 'obx', $ow = 'ow') {
     $outstanding = sales_outstanding($o, $ow);
     return "COALESCE($o.order_status, '') = 'Delivered'"
         . " AND COALESCE($ob.status, '') <> 'RETURNED'"
+        . " AND UPPER(COALESCE($ob.status, '')) <> 'CANCELLED'"
         . " AND ($item_net) > 0"
         . " AND ($outstanding) > 0"
         . " AND COALESCE($o.payment_status, '') <> 'Approved'";
@@ -132,22 +136,24 @@ function sales_unpaid_condition($o = 'o', $oi = 'oi', $ob = 'obx', $ow = 'ow') {
  * @param string $ob     alias ของตาราง order_boxes (ตัวเดียวกับที่ส่งให้ sales_box_join)
  */
 function sales_bucket($bucket, $o = 'o', $ob = 'obx') {
-    $status  = "COALESCE($o.order_status, '')";
-    $isRet   = "COALESCE($ob.status, '') = 'RETURNED'";
-    $notRet  = "COALESCE($ob.status, '') <> 'RETURNED'";
-    $live    = "$status NOT IN ('Cancelled', 'BadDebt')";
+    $status       = "COALESCE($o.order_status, '')";
+    $boxUpper     = "UPPER(COALESCE($ob.status, ''))";
+    $isRet        = "COALESCE($ob.status, '') = 'RETURNED'";
+    $isBoxCancel  = "$boxUpper = 'CANCELLED'";
+    $liveBox      = "COALESCE($ob.status, '') <> 'RETURNED' AND $boxUpper <> 'CANCELLED'";
+    $live         = "$status NOT IN ('Cancelled', 'BadDebt')";
 
     switch ($bucket) {
         case 'total':
-            return "($live AND $notRet)";
+            return "($live AND $liveBox)";
         case 'delivered':
-            return "($live AND $notRet AND $status IN ('Delivered', 'Returned'))";
+            return "($live AND $liveBox AND $status IN ('Delivered', 'Returned'))";
         case 'returned':
             return "($live AND $isRet)";
         case 'other':
-            return "($live AND $notRet AND $status NOT IN ('Delivered', 'Returned'))";
+            return "($live AND $liveBox AND $status NOT IN ('Delivered', 'Returned'))";
         case 'cancelled':
-            return "($status = 'Cancelled')";
+            return "($status = 'Cancelled' OR ($live AND $isBoxCancel))";
         case 'baddebt':
             return "($status = 'BadDebt')";
     }

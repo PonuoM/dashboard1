@@ -48,7 +48,7 @@ function OtherOrdersModal({ isOpen, onClose, productId, productName, salesperson
             if (cancelTypeId === 1) suffix = 'ออเดอร์ยกเลิก (ก่อนเข้าระบบ)';
             else if (cancelTypeId === 2) suffix = 'ออเดอร์ยกเลิก (หลังเข้าระบบ)';
             else if (cancelTypeId === 3) suffix = 'ออเดอร์ยกเลิก (ปฏิเสธรับของ)';
-            else suffix = 'ออเดอร์ยกเลิก';
+            else suffix = 'ออเดอร์ยกเลิก (ทั้งใบ และกล่องที่ยกเลิกบางส่วน)';
         }
         else if (statusType === 'baddebt') suffix = 'ออเดอร์หนี้สูญ';
         else if (statusType === 'unpaid') suffix = 'ออเดอร์ค้างชำระ (ส่งสำเร็จ ยังไม่ได้รับเงินครบ หลังหักยอดยกเลิกกล่อง)';
@@ -359,11 +359,18 @@ function OtherOrdersModal({ isOpen, onClose, productId, productName, salesperson
                                                     <td className={`px-3 py-3 text-right font-bold ${config.color}`}
                                                         title={statusType === 'unpaid'
                                                             ? `ยอดสินค้าหลังหัก waive (ของคุณ): ฿${formatCurrency(order.item_total)}\nยอดออเดอร์เต็ม: ฿${formatCurrency(order.total_amount)}\nรับเงินแล้ว (amount_paid): ฿${formatCurrency(order.amount_paid)}\nยอดยกเลิกกล่อง (waive): ฿${formatCurrency(order.waived_total)}\nค้างจริง: ฿${formatCurrency(Math.max(0, (order.total_amount || 0) - (order.amount_paid || 0) - (order.waived_total || 0)))}\nสัดส่วนของคุณ: ฿${formatCurrency(order.unpaid_share)}`
-                                                            : (order.waived_total > 0
-                                                                ? `ยอดหลังหักยกเลิกกล่อง: ฿${formatCurrency(order.item_total)}\nยอดยกเลิกกล่อง (waive): ฿${formatCurrency(order.waived_total)}`
-                                                                : '')}>
+                                                            : (statusType === 'cancelled' && order.waived_total > 0
+                                                                ? `ยอดยกเลิกเต็ม (ไม่หัก waive): ฿${formatCurrency(order.item_total)}\nยอด waive ของกล่อง: ฿${formatCurrency(order.waived_total)}`
+                                                                : (order.waived_total > 0
+                                                                    ? `ยอดหลังหักยกเลิกกล่อง: ฿${formatCurrency(order.item_total)}\nยอดยกเลิกกล่อง (waive): ฿${formatCurrency(order.waived_total)}`
+                                                                    : ''))}>
                                                         <div>฿{formatCurrency(statusType === 'unpaid' ? order.unpaid_share : order.item_total)}</div>
-                                                        {order.waived_total > 0 && (
+                                                        {order.waived_total > 0 && statusType === 'cancelled' && (
+                                                            <div className="text-[10px] font-bold text-gray-500 mt-0.5">
+                                                                มีกล่องยกเลิก
+                                                            </div>
+                                                        )}
+                                                        {order.waived_total > 0 && statusType !== 'cancelled' && (
                                                             <div className="text-[10px] font-bold text-rose-500 mt-0.5">
                                                                 ยกเลิกกล่อง −฿{formatCurrency(order.waived_total)}
                                                             </div>
@@ -400,8 +407,10 @@ function OtherOrdersModal({ isOpen, onClose, productId, productName, salesperson
                                                                             <tbody className="divide-y divide-gray-50">
                                                                                 {items.map((item) => {
                                                                                     const isHighlighted = productId && String(item.product_id) === String(productId);
+                                                                                    const boxCancelled = String(item.box_status || '').toUpperCase() === 'CANCELLED';
                                                                                     const itemWaived = (item.waived_amount || 0) > 0;
                                                                                     const fullyWaived = itemWaived && item.collection_amount > 0 && item.waived_amount >= item.collection_amount;
+                                                                                    const showWaiveStrike = itemWaived && statusType !== 'cancelled';
                                                                                     return (
                                                                                     <tr key={item.item_id} className={`transition-colors ${isHighlighted ? 'bg-amber-50/80 ring-1 ring-amber-200/60' : 'opacity-60 hover:opacity-100 hover:bg-white/60'}`}>
                                                                                         <td className={`px-4 py-2 font-medium ${isHighlighted ? 'text-amber-900 font-bold' : 'text-gray-800'}`}>
@@ -410,7 +419,10 @@ function OtherOrdersModal({ isOpen, onClose, productId, productName, salesperson
                                                                                             {item.is_freebie === 1 && (
                                                                                                 <span className="ml-1.5 text-[9px] px-1.5 py-0.5 bg-green-100 text-green-700 rounded-full font-bold">ฟรี</span>
                                                                                             )}
-                                                                                            {itemWaived && (
+                                                                                            {boxCancelled && (
+                                                                                                <span className="ml-1.5 text-[9px] px-1.5 py-0.5 bg-gray-200 text-gray-700 rounded-full font-bold">ยกเลิกกล่อง</span>
+                                                                                            )}
+                                                                                            {!boxCancelled && itemWaived && (
                                                                                                 <span className="ml-1.5 text-[9px] px-1.5 py-0.5 bg-rose-100 text-rose-700 rounded-full font-bold">
                                                                                                     {fullyWaived ? 'ยกเลิกกล่องทั้งก้อน' : `ยกเลิกกล่อง −฿${formatCurrency(item.waived_amount)}`}
                                                                                                 </span>
@@ -420,7 +432,7 @@ function OtherOrdersModal({ isOpen, onClose, productId, productName, salesperson
                                                                                         <td className={`px-4 py-2 text-center font-bold ${isHighlighted ? 'text-amber-700' : ''}`}>{item.quantity}</td>
                                                                                         <td className="px-4 py-2 text-right text-gray-600">฿{formatCurrency(item.unit_price)}</td>
                                                                                         <td className={`px-4 py-2 text-right font-bold ${isHighlighted ? 'text-amber-700' : 'text-gray-800'}`}>
-                                                                                            {itemWaived ? (
+                                                                                            {showWaiveStrike ? (
                                                                                                 <div>
                                                                                                     <div className="line-through text-gray-400 font-medium">฿{formatCurrency(item.net_total)}</div>
                                                                                                     <div className="text-rose-600">฿{formatCurrency(item.net_after_waive)}</div>
@@ -434,7 +446,13 @@ function OtherOrdersModal({ isOpen, onClose, productId, productName, salesperson
                                                                                 })}
                                                                             </tbody>
                                                                         </table>
-                                                                        {order.waived_total > 0 && (
+                                                                        {order.waived_total > 0 && statusType === 'cancelled' && (
+                                                                            <div className="px-4 py-2.5 bg-gray-100/80 border-t border-gray-200 flex flex-wrap items-center justify-end gap-x-4 gap-y-1 text-[11px]">
+                                                                                <span className="text-gray-500">รวมสินค้า ฿{formatCurrency(items.reduce((s, it) => s + (it.net_total || 0), 0))}</span>
+                                                                                <span className={`font-bold ${config.color}`}>ยอดยกเลิกในรายงาน (เต็ม) ฿{formatCurrency(order.item_total)}</span>
+                                                                            </div>
+                                                                        )}
+                                                                        {order.waived_total > 0 && statusType !== 'cancelled' && (
                                                                             <div className="px-4 py-2.5 bg-rose-50/80 border-t border-rose-100 flex flex-wrap items-center justify-end gap-x-4 gap-y-1 text-[11px]">
                                                                                 <span className="text-gray-500">รวมสินค้า ฿{formatCurrency(items.reduce((s, it) => s + (it.net_total || 0), 0))}</span>
                                                                                 <span className="font-bold text-rose-600">ยกเลิกกล่อง −฿{formatCurrency(order.waived_total)}</span>

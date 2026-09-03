@@ -200,10 +200,13 @@ try {
     $b_dd_returned  = sales_bucket('returned');
     // ตารางนี้มีแค่ 3 คอลัมน์ และ total_sales รวมทุกสถานะที่ไม่ใช่ Cancelled
     // จึงต้องให้ อื่นๆ เป็นถังรองรับที่เหลือทั้งหมด (รวม BadDebt ที่ไม่มีคอลัมน์ของตัวเอง)
+    // กันกล่อง CANCELLED ออกด้วย ไม่งั้นชิ้นที่ยกเลิกกล่องจะไปโผล่จำนวนในอื่นๆ
     // เพื่อให้ สำเร็จ + ตีกลับ + อื่นๆ = total_sales เสมอ
-    $b_dd_other     = "(NOT $b_dd_delivered AND NOT $b_dd_returned)";
+    $b_dd_other     = "(NOT $b_dd_delivered AND NOT $b_dd_returned AND UPPER(COALESCE(obx.status, '')) <> 'CANCELLED')";
     $item_net_dd    = sales_box_net_amount();
     // ตีกลับไม่สเกลตาม waive ส่วนสำเร็จ/อื่นๆ สเกล — total ต้องเป็นผลรวมชุดเดียวกัน
+    // กล่อง CANCELLED ไม่อยู่ในสามคอลัมน์นี้ จึงไม่นับใน total ด้วย
+    $not_box_cancel = "UPPER(COALESCE(obx.status, '')) <> 'CANCELLED'";
     $item_total_dd  = "(CASE WHEN $b_dd_returned THEN COALESCE(oi.net_total, 0) ELSE $item_net_dd END)";
 
     $dept_detail_sql = "
@@ -216,8 +219,8 @@ try {
             p.id AS product_id,
             p.name AS product_name,
             p.category AS product_category,
-            SUM(oi.quantity) AS total_quantity,
-            COALESCE(SUM($item_total_dd), 0) AS total_sales,
+            SUM(CASE WHEN $not_box_cancel THEN oi.quantity ELSE 0 END) AS total_quantity,
+            COALESCE(SUM(CASE WHEN $not_box_cancel THEN $item_total_dd ELSE 0 END), 0) AS total_sales,
             SUM(CASE WHEN $b_dd_delivered THEN oi.quantity ELSE 0 END) AS delivered_qty,
             COALESCE(SUM(CASE WHEN $b_dd_delivered THEN $item_net_dd ELSE 0 END), 0) AS delivered_sales,
             SUM(CASE WHEN $b_dd_returned THEN oi.quantity ELSE 0 END) AS returned_qty,

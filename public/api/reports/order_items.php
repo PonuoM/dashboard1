@@ -54,7 +54,8 @@ try {
             CASE WHEN oi.is_freebie = 1 THEN 1 ELSE 0 END AS is_freebie,
             oi.box_number,
             COALESCE(ob.collection_amount, 0) AS collection_amount,
-            COALESCE(ob.waived_amount, 0) AS waived_amount
+            COALESCE(ob.waived_amount, 0) AS waived_amount,
+            COALESCE(ob.status, '') AS box_status
         FROM order_items oi
         LEFT JOIN products p ON oi.product_id = p.id
         LEFT JOIN order_boxes ob ON ob.order_id = oi.parent_order_id AND ob.box_number = oi.box_number
@@ -86,6 +87,7 @@ try {
         $row['box_number'] = $row['box_number'] !== null ? intval($row['box_number']) : null;
         $row['collection_amount'] = floatval($row['collection_amount']);
         $row['waived_amount'] = floatval($row['waived_amount']);
+        $row['box_status'] = $row['box_status'] ?? '';
         $collection = $row['collection_amount'];
         $waived = $row['waived_amount'];
         $row['net_after_waive'] = ($collection > 0)
