@@ -83,7 +83,7 @@ if ($__r) {
  * รับ alias เข้ามาเพราะคิวรีนี้ใช้เงื่อนไขเดียวกันสองที่ (summary และ subquery)
  * ด้วย alias ต่างกัน
  */
-function build_status_condition($status_type, $cancel_type_id, $conn, $o = 'o', $ob = 'obx', $oc = 'oc') {
+function build_status_condition($status_type, $cancel_type_id, $conn, $o = 'o', $oi = 'oi', $ob = 'obx', $oc = 'oc', $ow = 'ow') {
     if ($status_type === 'delivered') {
         return sales_bucket('delivered', $o, $ob);
     }
@@ -101,10 +101,7 @@ function build_status_condition($status_type, $cancel_type_id, $conn, $o = 'o', 
         return sales_bucket('baddebt', $o, $ob);
     }
     if ($status_type === 'unpaid') {
-        return "COALESCE($o.order_status, '') = 'Delivered'"
-            . " AND COALESCE($ob.status, '') <> 'RETURNED'"
-            . " AND COALESCE($o.amount_paid, 0) < COALESCE($o.total_amount, 0)"
-            . " AND COALESCE($o.payment_status, '') <> 'Approved'";
+        return sales_unpaid_condition($o, $oi, $ob, $ow);
     }
     // drill-down จากการ์ดสรุปสถานะรวม ซึ่งยังนับที่ระดับออเดอร์ล้วน จึงไม่ใส่เงื่อนไขกล่อง
     if (in_array($status_type, ['Pending', 'Preparing', 'Shipping', 'Confirmed', 'Packing', 'Processing'])) {
@@ -113,7 +110,7 @@ function build_status_condition($status_type, $cancel_type_id, $conn, $o = 'o', 
     return sales_bucket('other', $o, $ob);
 }
 
-$status_condition = build_status_condition($status_type, $cancel_type_id, $conn, 'o', 'obx', 'oc');
+$status_condition = build_status_condition($status_type, $cancel_type_id, $conn, 'o', 'oi', 'obx', 'oc', 'ow');
 
 // Department filter
 $dept_condition = "";
@@ -144,19 +141,24 @@ if ($salesperson_id > 0) {
 
 // 1. Get status summary
 $summary_box_join = sales_box_join('o', 'oi', 'obx');
+$summary_waived_join = sales_order_waived_join('o', 'ow');
+$summary_item_amount = in_array($status_type, ['delivered', 'other', 'unpaid'], true)
+    ? sales_box_net_amount('oi', 'obx')
+    : 'COALESCE(oi.net_total, 0)';
 
 $summary_sql = "
     SELECT 
         o.order_status,
         COUNT(DISTINCT o.id) AS order_count,
         SUM(oi.quantity) AS total_qty,
-        COALESCE(SUM(oi.net_total), 0) AS total_sales
+        COALESCE(SUM($summary_item_amount), 0) AS total_sales
     FROM orders o
     INNER JOIN order_items oi ON o.id = oi.parent_order_id
     INNER JOIN users u ON COALESCE(oi.creator_id, o.creator_id) = u.id
     LEFT JOIN products p ON oi.product_id = p.id
     LEFT JOIN order_cancellations oc ON o.id = oc.order_id
     $summary_box_join
+    $summary_waived_join
     WHERE 
         o.company_id = ?
         AND {$date_condition}
@@ -192,11 +194,16 @@ $stmt->close();
 // 2. Get order details — use subquery to get distinct order IDs first
 // เงื่อนไขของ subquery ถูกสร้างใหม่ด้วย alias ของ subquery โดยตรง
 // (เดิมใช้ str_replace แปลง alias ซึ่งพังทันทีที่เงื่อนไขอ้างคอลัมน์ใหม่)
-$sub_status = build_status_condition($status_type, $cancel_type_id, $conn, 'o2', 'obx2', 'oc2');
+$sub_status = build_status_condition($status_type, $cancel_type_id, $conn, 'o2', 'oi', 'obx2', 'oc2', 'ow2');
 $sub_dept = str_replace('u.role', 'u2.role', $dept_condition);
 $sub_product = str_replace('o.creator_id', 'o2.creator_id', $product_condition);
 $sub_date = str_replace('o.order_date', 'o2.order_date', $date_condition);
 $sub_box_join = sales_box_join('o2', 'oi', 'obx2');
+$sub_waived_join = sales_order_waived_join('o2', 'ow2');
+$outer_waived_join = sales_order_waived_join('o', 'ow');
+$sub_item_amount = in_array($status_type, ['delivered', 'other', 'unpaid'], true)
+    ? sales_box_net_amount('oi', 'obx2')
+    : 'COALESCE(oi.net_total, 0)';
 
 $orders_sql = "
     SELECT
@@ -207,6 +214,7 @@ $orders_sql = "
         o.payment_status,
         o.amount_paid,
         o.total_amount,
+        COALESCE(ow.waived_total, 0) AS waived_total,
         o.notes AS order_notes,
         oc.notes AS cancel_notes,
         ct.label AS cancel_type_name,
@@ -223,7 +231,7 @@ $orders_sql = "
         SELECT
             oi.parent_order_id AS order_id,
             SUM(oi.quantity) AS item_qty,
-            COALESCE(SUM(oi.net_total), 0) AS item_total,
+            COALESCE(SUM($sub_item_amount), 0) AS item_total,
             -- คนขายระดับ item ตัวที่เข้าเงื่อนไขจริง ไม่ใช่คนสร้างออเดอร์
             MAX(COALESCE(oi.creator_id, o2.creator_id)) AS creator_id
         FROM order_items oi
@@ -231,6 +239,7 @@ $orders_sql = "
         INNER JOIN users u2 ON COALESCE(oi.creator_id, o2.creator_id) = u2.id
         LEFT JOIN order_cancellations oc2 ON o2.id = oc2.order_id
         $sub_box_join
+        $sub_waived_join
         WHERE
             o2.company_id = ?
             AND {$sub_date}
@@ -246,6 +255,7 @@ $orders_sql = "
     LEFT JOIN customers c ON o.customer_id = c.customer_id
     LEFT JOIN order_cancellations oc ON o.id = oc.order_id
     LEFT JOIN cancellation_types ct ON oc.cancellation_type_id = ct.id
+    $outer_waived_join
     -- เหตุผลตีกลับถูกบันทึกที่ระดับกล่อง (order_boxes) ไม่ใช่ orders.notes
     -- ออเดอร์เดียวอาจมีหลายกล่องตีกลับ (partial return) จึงรวมเป็นข้อความเดียว
     LEFT JOIN (
@@ -277,9 +287,11 @@ while ($row = $orders_result->fetch_assoc()) {
     $item_total = floatval($row['item_total']);
     $order_total = floatval($row['total_amount']);
     $paid = floatval($row['amount_paid'] ?? 0);
-    // Proportional share of unpaid amount that belongs to this creator's items
-    $unpaid_share = ($order_total > 0 && $paid < $order_total)
-        ? $item_total * ($order_total - $paid) / $order_total
+    $waived = floatval($row['waived_total'] ?? 0);
+    $outstanding = max(0, $order_total - $paid - $waived);
+    $unpaid_denom = $order_total - $waived;
+    $unpaid_share = ($unpaid_denom > 0 && $outstanding > 0)
+        ? $item_total * $outstanding / $unpaid_denom
         : 0;
 
     $orders[] = [
@@ -296,6 +308,7 @@ while ($row = $orders_result->fetch_assoc()) {
         'item_qty' => intval($row['item_qty']),
         'item_total' => $item_total,
         'total_amount' => $order_total,
+        'waived_total' => $waived,
         'unpaid_share' => $unpaid_share,
         'order_notes' => $row['order_notes'] ?? '',
         'cancel_notes' => $row['cancel_notes'] ?? '',

@@ -51,9 +51,13 @@ try {
             oi.price_per_unit AS unit_price,
             oi.discount,
             oi.net_total,
-            CASE WHEN oi.is_freebie = 1 THEN 1 ELSE 0 END AS is_freebie
+            CASE WHEN oi.is_freebie = 1 THEN 1 ELSE 0 END AS is_freebie,
+            oi.box_number,
+            COALESCE(ob.collection_amount, 0) AS collection_amount,
+            COALESCE(ob.waived_amount, 0) AS waived_amount
         FROM order_items oi
         LEFT JOIN products p ON oi.product_id = p.id
+        LEFT JOIN order_boxes ob ON ob.order_id = oi.parent_order_id AND ob.box_number = oi.box_number
         WHERE oi.parent_order_id = ?
         ORDER BY oi.id ASC
     ";
@@ -79,6 +83,14 @@ try {
         $row['discount'] = floatval($row['discount']);
         $row['net_total'] = floatval($row['net_total']);
         $row['is_freebie'] = intval($row['is_freebie']);
+        $row['box_number'] = $row['box_number'] !== null ? intval($row['box_number']) : null;
+        $row['collection_amount'] = floatval($row['collection_amount']);
+        $row['waived_amount'] = floatval($row['waived_amount']);
+        $collection = $row['collection_amount'];
+        $waived = $row['waived_amount'];
+        $row['net_after_waive'] = ($collection > 0)
+            ? $row['net_total'] * max(0, $collection - $waived) / $collection
+            : $row['net_total'];
         $total += $row['net_total'];
         $items[] = $row;
     }

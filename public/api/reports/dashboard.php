@@ -202,6 +202,9 @@ try {
     // จึงต้องให้ อื่นๆ เป็นถังรองรับที่เหลือทั้งหมด (รวม BadDebt ที่ไม่มีคอลัมน์ของตัวเอง)
     // เพื่อให้ สำเร็จ + ตีกลับ + อื่นๆ = total_sales เสมอ
     $b_dd_other     = "(NOT $b_dd_delivered AND NOT $b_dd_returned)";
+    $item_net_dd    = sales_box_net_amount();
+    // ตีกลับไม่สเกลตาม waive ส่วนสำเร็จ/อื่นๆ สเกล — total ต้องเป็นผลรวมชุดเดียวกัน
+    $item_total_dd  = "(CASE WHEN $b_dd_returned THEN COALESCE(oi.net_total, 0) ELSE $item_net_dd END)";
 
     $dept_detail_sql = "
         SELECT 
@@ -214,13 +217,13 @@ try {
             p.name AS product_name,
             p.category AS product_category,
             SUM(oi.quantity) AS total_quantity,
-            COALESCE(SUM(oi.net_total), 0) AS total_sales,
+            COALESCE(SUM($item_total_dd), 0) AS total_sales,
             SUM(CASE WHEN $b_dd_delivered THEN oi.quantity ELSE 0 END) AS delivered_qty,
-            COALESCE(SUM(CASE WHEN $b_dd_delivered THEN oi.net_total ELSE 0 END), 0) AS delivered_sales,
+            COALESCE(SUM(CASE WHEN $b_dd_delivered THEN $item_net_dd ELSE 0 END), 0) AS delivered_sales,
             SUM(CASE WHEN $b_dd_returned THEN oi.quantity ELSE 0 END) AS returned_qty,
             COALESCE(SUM(CASE WHEN $b_dd_returned THEN oi.net_total ELSE 0 END), 0) AS returned_sales,
             SUM(CASE WHEN $b_dd_other THEN oi.quantity ELSE 0 END) AS other_qty,
-            COALESCE(SUM(CASE WHEN $b_dd_other THEN oi.net_total ELSE 0 END), 0) AS other_sales
+            COALESCE(SUM(CASE WHEN $b_dd_other THEN $item_net_dd ELSE 0 END), 0) AS other_sales
         FROM orders o
         INNER JOIN order_items oi ON o.id = oi.parent_order_id
         INNER JOIN users u ON COALESCE(oi.creator_id, o.creator_id) = u.id
@@ -270,12 +273,15 @@ try {
     // ตามกล่องจริง จึงปรากฏในหลายคอลัมน์พร้อมกัน (ยอดบวกกันได้ จำนวนบวกไม่ได้)
     // =============================================
     $box_join    = sales_box_join();
+    $waived_join = sales_order_waived_join();
     $b_total     = sales_bucket('total');
     $b_delivered = sales_bucket('delivered');
     $b_returned  = sales_bucket('returned');
     $b_cancelled = sales_bucket('cancelled');
     $b_baddebt   = sales_bucket('baddebt');
     $b_other     = sales_bucket('other');
+    $item_net    = sales_box_net_amount();
+    $outstanding = sales_outstanding();
 
     $r_good      = sales_return_reason('good');
     $r_damaged   = sales_return_reason('damaged');
@@ -284,11 +290,9 @@ try {
     $r_other     = sales_return_reason('other');
 
     // ค้างชำระ = ส่งสำเร็จแต่ยังเก็บเงินไม่ครบ จึงเป็นสับเซตของคอลัมน์ สำเร็จ
-    // ต้องกันกล่องที่ตีกลับออก ไม่งั้นของที่ลูกค้าคืนแล้วจะถูกนับเป็นหนี้ค้าง
-    $unpaid_cond = "COALESCE(o.order_status, '') = 'Delivered'"
-        . " AND COALESCE(obx.status, '') <> 'RETURNED'"
-        . " AND COALESCE(o.amount_paid, 0) < COALESCE(o.total_amount, 0)"
-        . " AND COALESCE(o.payment_status, '') <> 'Approved'";
+    // หักยอด waive ของออเดอร์ออกจากช่องว่าง amount_paid กันกล่องที่ตีกลับด้วย
+    $unpaid_cond = sales_unpaid_condition();
+    $unpaid_denom = "NULLIF(COALESCE(o.total_amount, 0) - COALESCE(ow.waived_total, 0), 0)";
 
     $salesperson_sql = "
         SELECT 
@@ -301,10 +305,10 @@ try {
             u.first_name,
             u.last_name,
             COUNT(DISTINCT CASE WHEN $b_total THEN o.id END) AS total_orders,
-            COALESCE(SUM(CASE WHEN $b_total THEN oi.net_total ELSE 0 END), 0) AS total_sales,
+            COALESCE(SUM(CASE WHEN $b_total THEN $item_net ELSE 0 END), 0) AS total_sales,
             
             COUNT(DISTINCT CASE WHEN $b_delivered THEN o.id END) AS delivered_orders,
-            COALESCE(SUM(CASE WHEN $b_delivered THEN oi.net_total ELSE 0 END), 0) AS delivered_sales,
+            COALESCE(SUM(CASE WHEN $b_delivered THEN $item_net ELSE 0 END), 0) AS delivered_sales,
             
             COUNT(DISTINCT CASE WHEN $b_returned THEN o.id END) AS returned_orders,
             COALESCE(SUM(CASE WHEN $b_returned THEN oi.net_total ELSE 0 END), 0) AS returned_sales,
@@ -341,19 +345,19 @@ try {
 
             COUNT(DISTINCT CASE WHEN $unpaid_cond THEN o.id END) AS unpaid_orders,
             COALESCE(SUM(CASE
-                WHEN $unpaid_cond
-                 AND COALESCE(o.total_amount, 0) > 0
-                THEN oi.net_total * (COALESCE(o.total_amount, 0) - COALESCE(o.amount_paid, 0)) / COALESCE(o.total_amount, 0)
+                WHEN $unpaid_cond AND $unpaid_denom IS NOT NULL
+                THEN $item_net * ($outstanding) / $unpaid_denom
                 ELSE 0
             END), 0) AS unpaid_sales,
 
             COUNT(DISTINCT CASE WHEN $b_other THEN o.id END) AS other_orders,
-            COALESCE(SUM(CASE WHEN $b_other THEN oi.net_total ELSE 0 END), 0) AS other_sales
+            COALESCE(SUM(CASE WHEN $b_other THEN $item_net ELSE 0 END), 0) AS other_sales
         FROM orders o
         INNER JOIN order_items oi ON o.id = oi.parent_order_id
         INNER JOIN users u ON COALESCE(oi.creator_id, o.creator_id) = u.id
         LEFT JOIN order_cancellations oc ON o.id = oc.order_id
         $box_join
+        $waived_join
         WHERE 
             o.company_id = ?
             AND $date_condition

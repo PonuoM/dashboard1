@@ -54,6 +54,72 @@ function sales_box_join($o = 'o', $oi = 'oi', $ob = 'obx') {
 }
 
 /**
+ * ยอด waive รวมต่อออเดอร์ — join ครั้งเดียวไม่ให้บานตอน SUM จากแถว item
+ *
+ * @param string $o  alias ของตาราง orders
+ * @param string $ow alias ของ subquery ยอด waive
+ */
+function sales_order_waived_join($o = 'o', $ow = 'ow') {
+    return "LEFT JOIN (
+        SELECT order_id, SUM(COALESCE(waived_amount, 0)) AS waived_total
+        FROM order_boxes
+        GROUP BY order_id
+    ) $ow ON $ow.order_id = $o.id";
+}
+
+/**
+ * ยอดสินค้าหลังหัก waive ของกล่องนั้น
+ *
+ * กล่องที่ยกเลิกเต็มจำนวน (waived >= collection) ได้ 0
+ * กล่องที่ยกเลิกบางส่วนได้สัดส่วน (collection - waived) / collection
+ * ถ้าไม่มี collection_amount คงใช้ net_total เพื่อไม่ทำยอดกล่องที่ยังไม่มีข้อมูลการเก็บหายไป
+ *
+ * ใช้กับ SUM ของ bucket total / delivered / other เท่านั้น
+ * ห้ามใช้กับ returned / cancelled / baddebt
+ *
+ * @param string $oi alias ของตาราง order_items
+ * @param string $ob alias ของตาราง order_boxes
+ */
+function sales_box_net_amount($oi = 'oi', $ob = 'obx') {
+    $collection = "COALESCE($ob.collection_amount, 0)";
+    $waived     = "COALESCE($ob.waived_amount, 0)";
+    $net_total  = "COALESCE($oi.net_total, 0)";
+    return "(CASE
+        WHEN $collection > 0 THEN $net_total * GREATEST(0, $collection - $waived) / $collection
+        ELSE $net_total
+    END)";
+}
+
+/**
+ * ยอดค้างของออเดอร์ = ยอดบิล − เงินเข้า (amount_paid ตามสลิป/COD) − ยอด waive รวม
+ * ไม่หัก collected_amount จะซ้ำกับ amount_paid
+ *
+ * @param string $o  alias ของตาราง orders
+ * @param string $ow alias ของ subquery ยอด waive
+ */
+function sales_outstanding($o = 'o', $ow = 'ow') {
+    return "GREATEST(0, COALESCE($o.total_amount, 0) - COALESCE($o.amount_paid, 0) - COALESCE($ow.waived_total, 0))";
+}
+
+/**
+ * เงื่อนไขค้างชำระ — สับเซตของสำเร็จ: Delivered, กล่องไม่ตีกลับ, ยังมียอดหลัง waive, ยังเก็บไม่ครบ
+ *
+ * @param string $o  alias ของตาราง orders
+ * @param string $oi alias ของตาราง order_items
+ * @param string $ob alias ของตาราง order_boxes
+ * @param string $ow alias ของ subquery ยอด waive
+ */
+function sales_unpaid_condition($o = 'o', $oi = 'oi', $ob = 'obx', $ow = 'ow') {
+    $item_net    = sales_box_net_amount($oi, $ob);
+    $outstanding = sales_outstanding($o, $ow);
+    return "COALESCE($o.order_status, '') = 'Delivered'"
+        . " AND COALESCE($ob.status, '') <> 'RETURNED'"
+        . " AND ($item_net) > 0"
+        . " AND ($outstanding) > 0"
+        . " AND COALESCE($o.payment_status, '') <> 'Approved'";
+}
+
+/**
  * คืนนิพจน์ boolean ของ bucket สำหรับใช้ใน CASE WHEN หรือ WHERE
  *
  * ทุกนิพจน์ห่อวงเล็บไว้แล้ว ต่อด้วย AND/OR ได้ทันที
